@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../hooks/useAuth';
-import { Globe, Layout, ChevronRight, ExternalLink, Sparkles } from 'lucide-react';
+import { Globe, Layout, ChevronRight, Sparkles } from 'lucide-react';
 import './PreviewChoicePage.css';
 
 const PreviewChoicePage: React.FC = () => {
