@@ -1,0 +1,140 @@
+.preview-choice-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.choice-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.choice-header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+}
+
+.choice-header p {
+    color: #64748b;
+}
+
+.choice-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.choice-card {
+    position: relative;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.choice-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.choice-card.featured {
+    border-color: #0f172a;
+}
+
+.featured-badge {
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #0f172a;
+    color: white;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.choice-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.choice-icon.has-website {
+    background: #f0fdf4;
+    color: #16a34a;
+}
+
+.choice-icon.no-website {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.choice-card h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+}
+
+.choice-card p {
+    color: #64748b;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.choice-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+}
+
+.choice-features li {
+    color: #475569;
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+}
+
+.choice-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+    color: #0f172a;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.choice-footer {
+    text-align: center;
+}
+
+.choice-footer p {
+    color: #64748b;
+    font-size: 0.85rem;
+    margin: 0.25rem 0;
+}
+
+.choice-footer .hint {
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+
+@media (max-width: 600px) {
+    .choice-cards {
+        grid-template-columns: 1fr;
+    }
+}

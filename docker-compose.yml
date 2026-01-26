@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: support-agent-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-support_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password_change_this}
+      POSTGRES_DB: ${POSTGRES_DB:-support_agent_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-support_agent}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - support-agent-network
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: support-agent-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:6333/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - support-agent-network
+
+  # Redis (optional caching)
+  redis:
+    image: redis:7-alpine
+    container_name: support-agent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - support-agent-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: support-agent-backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-support_agent}:${POSTGRES_PASSWORD:-your_secure_password_change_this}@postgres:5432/${POSTGRES_DB:-support_agent_db}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_URL=redis://redis:6379
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - SECRET_KEY=${SECRET_KEY:-your_secret_key_change_this_to_random_string}
+      - DEBUG=${DEBUG:-false}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+      - backend_logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - support-agent-network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: support-agent-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - support-agent-network
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  support-agent-network:
+    driver: bridge

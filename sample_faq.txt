@@ -1,0 +1,30 @@
+Zada AI Customer Service Knowledge Base
+Version 2.0 - Effective Date: 2025-01-01
+
+1. Return & Refund Policy
+   - 30-Day Money-Back Guarantee: Customers can return any hardware product within 30 days of delivery for a full refund, provided it is in like-new condition.
+   - Restocking Fee: A 15% restocking fee applies if the original packaging is missing or damaged.
+   - Process: To initiate a return, log in to the portal and visit the "My Orders" section.
+
+2. Warranty Information
+   - Standard Warranty: All devices come with a 1-year manufacturer warranty covering defects in materials and workmanship.
+   - Extended Warranty: Can be purchased within 60 days of the original purchase. Covers accidental drops and spills.
+   - Voiding Warranty: Opening the device chassis or unauthorized repairs voids the warranty.
+
+3. Troubleshooting Common Issues
+   - Device Not Powering On: Ensure the charging cable is securely connected. Hold the power button for 10 seconds to force a reset.
+   - Connectivity Issues: fast blinking blue light indicates pairing mode. Solid red light indicates network error. Reset your router if the red light persists.
+
+4. Account Management
+   - Password Reset: Click the "Forgot Password" link on the login page. An email will be sent to your registered address.
+   - Two-Factor Authentication (2FA): We strongly recommend enabling 2FA in Account Settings > Security for enhanced protection.
+
+5. Subscription Plans
+   - Free Tier: Basic access to community forums and standard support (email only).
+   - Pro Tier ($10/month): Priority email support, live chat access during business hours (9 AM - 5 PM EST).
+   - Enterprise Tier: 24/7 dedicated phone support and assigned account manager.
+
+6. Privacy & Data
+   - We extract product usage data to improve services.
+   - Personal Identifiable Information (PII) is encrypted at rest and in transit.
+   - Users can request data deletion by submitting a GDPR request via the privacy portal.
