@@ -1,6 +1,5 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import useDrivePicker from 'react-google-drive-picker';
 import { Upload, X, FileText, CheckCircle, XCircle, Cloud } from 'lucide-react';
 import { documentService } from '../../services/documentService';
 import { DocumentUploadResponse } from '../../types';
@@ -18,12 +17,270 @@ interface FileWithProgress {
     result?: DocumentUploadResponse;
 }
 
+// Global state for Google API
+let gapiLoaded = false;
+let gisLoaded = false;
+let tokenClient: any = null;
+let accessToken: string | null = null;
+let pickerApiLoaded = false;
+
 export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
     const [files, setFiles] = useState<FileWithProgress[]>([]);
     const [category, setCategory] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    const [driveError, setDriveError] = useState<string | null>(null);
+    const [isDriveLoading, setIsDriveLoading] = useState(false);
+    const [isApiReady, setIsApiReady] = useState(false);
+    
+    const onPickCompleteRef = useRef<((files: any[]) => void) | null>(null);
 
-    const [openDrivePicker] = useDrivePicker();
+    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
+    const apiKey = import.meta.env.VITE_GOOGLE_DRIVE_API_KEY;
+
+    // Load Google APIs on component mount
+    useEffect(() => {
+        if (!clientId || !apiKey) {
+            console.log('Google Drive credentials not configured');
+            return;
+        }
+
+        // Load gapi script
+        const loadGapi = () => {
+            if (document.getElementById('gapi-script')) {
+                return;
+            }
+            const script = document.createElement('script');
+            script.id = 'gapi-script';
+            script.src = 'https://apis.google.com/js/api.js';
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+                (window as any).gapi.load('picker', () => {
+                    console.log('✓ Google Picker API loaded');
+                    pickerApiLoaded = true;
+                    checkApisReady();
+                });
+            };
+            document.body.appendChild(script);
+        };
+
+        // Load GIS (Google Identity Services) script
+        const loadGis = () => {
+            if (document.getElementById('gis-script')) {
+                return;
+            }
+            const script = document.createElement('script');
+            script.id = 'gis-script';
+            script.src = 'https://accounts.google.com/gsi/client';
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+                console.log('✓ Google Identity Services loaded');
+                gisLoaded = true;
+                initializeTokenClient();
+                checkApisReady();
+            };
+            document.body.appendChild(script);
+        };
+
+        const initializeTokenClient = () => {
+            if (!gisLoaded || tokenClient) return;
+            
+            tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/drive.readonly',
+                callback: (tokenResponse: any) => {
+                    if (tokenResponse.access_token) {
+                        console.log('✓ Access token received');
+                        accessToken = tokenResponse.access_token;
+                        // Open picker now that we have the token
+                        createAndShowPicker();
+                    } else {
+                        console.error('Token response error:', tokenResponse);
+                        setDriveError('Failed to authenticate with Google. Please try again.');
+                        setIsDriveLoading(false);
+                    }
+                },
+            });
+            console.log('✓ Token client initialized');
+        };
+
+        const checkApisReady = () => {
+            if (pickerApiLoaded && gisLoaded) {
+                setIsApiReady(true);
+                console.log('✓ All Google APIs ready');
+            }
+        };
+
+        loadGapi();
+        loadGis();
+    }, [clientId, apiKey]);
+
+    const createAndShowPicker = () => {
+        if (!pickerApiLoaded || !accessToken) {
+            console.error('Cannot show picker - API or token not ready');
+            return;
+        }
+
+        try {
+            const docsView = new (window as any).google.picker.DocsView()
+                .setIncludeFolders(true)
+                .setSelectFolderEnabled(false);
+
+            const picker = new (window as any).google.picker.PickerBuilder()
+                .addView(docsView)
+                .addView(new (window as any).google.picker.DocsUploadView())
+                .setOAuthToken(accessToken)
+                .setDeveloperKey(apiKey)
+                .setCallback(handlePickerCallback)
+                .enableFeature((window as any).google.picker.Feature.MULTISELECT_ENABLED)
+                .enableFeature((window as any).google.picker.Feature.SUPPORT_DRIVES)
+                .build();
+
+            picker.setVisible(true);
+            console.log('✓ Picker displayed');
+        } catch (error) {
+            console.error('Error creating picker:', error);
+            setDriveError('Failed to open Google Drive picker.');
+            setIsDriveLoading(false);
+        }
+    };
+
+    const handlePickerCallback = async (data: any) => {
+        console.log('Picker callback:', data);
+        
+        if (data.action === (window as any).google.picker.Action.PICKED) {
+            await processPickedFiles(data.docs);
+        } else if (data.action === (window as any).google.picker.Action.CANCEL) {
+            console.log('User cancelled picker');
+            setIsDriveLoading(false);
+        }
+    };
+
+    const processPickedFiles = async (driveFiles: any[]) => {
+        if (!accessToken) {
+            setDriveError('No access token available.');
+            setIsDriveLoading(false);
+            return;
+        }
+
+        const newFiles: FileWithProgress[] = [];
+        let successCount = 0;
+        let errorCount = 0;
+
+        // Google Workspace file types that need export
+        const googleDocsTypes: Record<string, { exportType: string; extension: string }> = {
+            'application/vnd.google-apps.document': { 
+                exportType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
+                extension: '.docx' 
+            },
+            'application/vnd.google-apps.spreadsheet': { 
+                exportType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                extension: '.xlsx' 
+            },
+            'application/vnd.google-apps.presentation': { 
+                exportType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 
+                extension: '.pptx' 
+            },
+        };
+
+        for (const driveFile of driveFiles) {
+            try {
+                console.log(`Fetching: ${driveFile.name} (${driveFile.id})`);
+                console.log(`MimeType: ${driveFile.mimeType}`);
+
+                let response: Response;
+                let finalFileName = driveFile.name;
+                let finalMimeType = driveFile.mimeType;
+
+                if (googleDocsTypes[driveFile.mimeType]) {
+                    // Google Workspace file - export it
+                    const exportInfo = googleDocsTypes[driveFile.mimeType];
+                    console.log(`Exporting as ${exportInfo.exportType}`);
+                    
+                    if (!finalFileName.endsWith(exportInfo.extension)) {
+                        finalFileName += exportInfo.extension;
+                    }
+                    finalMimeType = exportInfo.exportType;
+
+                    response = await fetch(
+                        `https://www.googleapis.com/drive/v3/files/${driveFile.id}/export?mimeType=${encodeURIComponent(exportInfo.exportType)}`,
+                        { headers: { Authorization: `Bearer ${accessToken}` } }
+                    );
+                } else {
+                    // Regular file - download directly
+                    response = await fetch(
+                        `https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`,
+                        { headers: { Authorization: `Bearer ${accessToken}` } }
+                    );
+                }
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`Download failed (${response.status}):`, errorText);
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const file = new File([blob], finalFileName, { 
+                    type: finalMimeType || 'application/octet-stream' 
+                });
+
+                console.log(`✓ Downloaded: ${finalFileName} (${file.size} bytes)`);
+
+                newFiles.push({
+                    file,
+                    progress: 0,
+                    status: 'pending',
+                });
+
+                successCount++;
+            } catch (error) {
+                errorCount++;
+                console.error(`Error downloading "${driveFile.name}":`, error);
+            }
+        }
+
+        if (newFiles.length > 0) {
+            setFiles((prev) => [...prev, ...newFiles]);
+            console.log(`✓ Added ${successCount} file(s) from Google Drive`);
+        }
+
+        if (errorCount > 0) {
+            setDriveError(
+                errorCount === driveFiles.length
+                    ? 'Failed to download files. Please check permissions and try again.'
+                    : `${errorCount} of ${driveFiles.length} files failed to download.`
+            );
+        }
+
+        setIsDriveLoading(false);
+    };
+
+    const handleDriveClick = () => {
+        setDriveError(null);
+
+        if (!clientId || !apiKey) {
+            setDriveError('Google Drive is not configured.');
+            return;
+        }
+
+        if (!isApiReady) {
+            setDriveError('Google APIs are still loading. Please wait and try again.');
+            return;
+        }
+
+        setIsDriveLoading(true);
+
+        // If we already have a valid token, show picker directly
+        if (accessToken) {
+            createAndShowPicker();
+        } else {
+            // Request access token - this will trigger OAuth flow
+            console.log('Requesting access token...');
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
+    };
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const newFiles: FileWithProgress[] = acceptedFiles.map((file) => ({
@@ -33,93 +290,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
         }));
         setFiles((prev) => [...prev, ...newFiles]);
     }, []);
-
-    const handleDriveClick = () => {
-        openDrivePicker({
-            clientId: import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID,
-            developerKey: import.meta.env.VITE_GOOGLE_DRIVE_API_KEY,
-            viewId: 'DOCS',
-            // showIcon: true, // Removed as it causes type error
-            supportDrives: true,
-            multiselect: true,
-            callbackFunction: (data) => {
-                if (data.action === 'picked') {
-                    handleDriveCallback(data);
-                }
-            },
-        });
-    };
-
-    const handleDriveCallback = async (data: any) => {
-        const driveFiles = data.docs;
-        const newFiles: FileWithProgress[] = [];
-
-        for (const driveFile of driveFiles) {
-            try {
-                // For Google Docs/Sheets/Slides, we need to export them. 
-                // However, the picker returns a download URL or we can use the ID to fetch via API.
-                // Simplified approach: Create a placeholder or fetch if we had full Drive API access scope.
-                // NOTE: The standard picker with 'drive.file' scope grants access to the selected file.
-                // We need to fetch the file content.
-
-                // Using the access token from the picker metadata if available, or just trying to fetch via the URL provided.
-                // The picker result usually contains: id, name, mimeType, iconUrl, url, etc.
-
-                // Real implementation would require fetching the file blob locally.
-                // Since this is a client-side integration without a backend proxy for Drive, 
-                // we'll attempt to fetch the file content if `driveFile.url` or `driveFile.id` is usable with the API Key/Token.
-
-                // However, the picker itself doesn't return the file *content*, just metadata.
-                // To get content, we need to make an authenticated request to the Drive API.
-                // This requires an access token. The picker might not return a fresh access token for the *user* session 
-                // unless we handle auth explicitly.
-
-                // FOR NOW: We will rely on the `oauthToken` passed to the picker or assume the user is authenticated.
-                // But `useDrivePicker` handles the loaded script. 
-
-                // CRITICAL FIX: The `react-google-drive-picker` usually handles auth. 
-                // We need to fetch the file blob using the ID and the token.
-                // But we don't have the token readily exposed in the callback `data` usually (it depends on the lib version).
-
-                // Alternative: We will mock the file object for now or try to fetch it if we can get a token.
-                // Actually, the `data` object in `callbackFunction` usually just has `docs`.
-                // Accessing file content from the browser requires `window.gapi.client.drive.files.get`.
-
-                // Let's attempt to use the `oauthToken` if we can assume it's available globally or retrieve it.
-                // If not, we might be limited to standard uploads or need a more complex auth flow.
-
-                // STRATEGY: We will assume we can fetch via the `gapi` client which should be initialized by the picker.
-
-                const token = (window as any).gapi?.auth?.getToken()?.access_token;
-                if (!token) {
-                    console.error("No access token found for Drive fetch");
-                    continue;
-                }
-
-                const response = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-
-                if (!response.ok) throw new Error('Failed to fetch file from Drive');
-
-                const blob = await response.blob();
-                const file = new File([blob], driveFile.name, { type: driveFile.mimeType });
-
-                newFiles.push({
-                    file,
-                    progress: 0,
-                    status: 'pending'
-                });
-
-            } catch (error) {
-                console.error("Error fetching Drive file:", error);
-            }
-        }
-
-        setFiles((prev) => [...prev, ...newFiles]);
-    };
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -189,11 +359,34 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
                     onClick={handleDriveClick}
                     className="btn btn-secondary google-drive-btn"
                     type="button"
+                    disabled={isDriveLoading || isUploading}
                 >
-                    <Cloud size={18} className="mr-2" />
-                    Select from Google Drive
+                    {isDriveLoading ? (
+                        <>
+                            <div className="spinner" style={{ width: '18px', height: '18px', marginRight: '8px' }} />
+                            Loading from Drive...
+                        </>
+                    ) : (
+                        <>
+                            <Cloud size={18} className="mr-2" />
+                            Select from Google Drive
+                        </>
+                    )}
                 </button>
             </div>
+
+            {driveError && (
+                <div className="error-message" style={{ 
+                    padding: '12px', 
+                    marginTop: '12px',
+                    backgroundColor: '#fee', 
+                    border: '1px solid #fcc', 
+                    borderRadius: '4px',
+                    color: '#c33'
+                }}>
+                    <strong>Google Drive Error:</strong> {driveError}
+                </div>
+            )}
 
             <div
                 {...getRootProps()}

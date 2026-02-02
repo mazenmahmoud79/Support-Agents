@@ -2,7 +2,7 @@
  * Tenant Context Service for managing company settings and AI customization.
  */
 import apiClient from './api';
-import { TenantContext, TenantContextUpdate, ContextOptions } from '../types';
+import { TenantContext, TenantContextUpdate, ContextOptions, Industry, ToneOfVoice, LanguageStyle, ResponseLength } from '../types';
 
 export interface TokenInfo {
     tenant_id: string;
@@ -41,8 +41,32 @@ export const tenantContextService = {
      * Used to populate form select fields.
      */
     async getContextOptions(): Promise<ContextOptions> {
-        const response = await apiClient.get<ContextOptions>('/admin/context/options');
-        return response.data;
+        try {
+            const response = await apiClient.get<ContextOptions>('/admin/context/options');
+            return response.data;
+        } catch (e) {
+            // If the backend endpoint is missing or fails, return sensible frontend defaults
+            console.warn('tenantContextService.getContextOptions() failed, using defaults', e);
+
+            const toLabel = (s: string) =>
+                s
+                    .toString()
+                    .replace(/_/g, ' ')
+                    .toLowerCase()
+                    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+            const industries = Object.values(Industry).map((v) => ({ value: v, label: toLabel(v) }));
+            const tones = Object.values(ToneOfVoice).map((v) => ({ value: v, label: toLabel(v) }));
+            const language_styles = Object.values(LanguageStyle).map((v) => ({ value: v, label: toLabel(v) }));
+            const response_lengths = Object.values(ResponseLength).map((v) => ({ value: v, label: toLabel(v) }));
+
+            return {
+                industries,
+                tones,
+                language_styles,
+                response_lengths,
+            };
+        }
     },
 
     /**

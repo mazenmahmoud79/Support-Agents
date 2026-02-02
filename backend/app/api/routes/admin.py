@@ -1,14 +1,15 @@
 """
 Admin routes for dashboard, analytics, and system health.
 """
-from typing import List
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from app.db.session import get_db
 from app.api.deps import get_current_tenant
-from app.models.database import Tenant, Document, ChatHistory, Analytics, DemoUser
-from app.models.schemas import AnalyticsResponse, HealthCheck, DemoUserCreate, DemoUserResponse
+from app.models.database import Tenant, Document, ChatHistory, Analytics, DemoUser, TenantContext
+from app.models.schemas import AnalyticsResponse, HealthCheck, DemoUserCreate, DemoUserResponse, TenantContextUpdate, TenantContextResponse
+from app.models.enums import Industry, ToneOfVoice, LanguageStyle, ResponseLength
 from app.services.vector_store import get_vector_store
 from app.services.llm_service import get_llm_service
 from app.config import settings
@@ -20,7 +21,108 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-@router.get("/analytics", response_model=List[AnalyticsResponse])
+# ==================== Tenant Context Management ====================
+
+@router.get("/context", response_model=TenantContextResponse)
+async def get_tenant_context(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the current tenant's context/profile settings.
+    Creates default settings if none exist.
+    """
+    context = db.query(TenantContext).filter(
+        TenantContext.tenant_id == tenant.tenant_id
+    ).first()
+    
+    # Create default context if none exists
+    if not context:
+        context = TenantContext(
+            tenant_id=tenant.tenant_id,
+            company_name=tenant.name,
+            industry=Industry.OTHER,
+            tone_of_voice=ToneOfVoice.PROFESSIONAL,
+            language_style=LanguageStyle.CONVERSATIONAL,
+            response_length=ResponseLength.BALANCED
+        )
+        db.add(context)
+        db.commit()
+        db.refresh(context)
+        logger.info(f"Created default context for tenant {tenant.tenant_id}")
+    
+    return context
+
+
+@router.put("/context", response_model=TenantContextResponse)
+async def update_tenant_context(
+    context_update: TenantContextUpdate,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the current tenant's context/profile settings.
+    Only provided fields are updated (partial update supported).
+    """
+    context = db.query(TenantContext).filter(
+        TenantContext.tenant_id == tenant.tenant_id
+    ).first()
+    
+    # Create if doesn't exist
+    if not context:
+        context = TenantContext(
+            tenant_id=tenant.tenant_id,
+            industry=Industry.OTHER,
+            tone_of_voice=ToneOfVoice.PROFESSIONAL,
+            language_style=LanguageStyle.CONVERSATIONAL,
+            response_length=ResponseLength.BALANCED
+        )
+        db.add(context)
+    
+    # Update fields that are provided
+    update_data = context_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(context, field, value)
+    
+    context.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(context)
+    
+    logger.info(f"Updated context for tenant {tenant.tenant_id}")
+    return context
+
+
+@router.get("/context/options")
+async def get_context_options() -> Dict[str, List[Dict[str, str]]]:
+    """
+    Get all available options for tenant context dropdowns.
+    Used to populate form select fields in the UI.
+    """
+    def to_label(value: str) -> str:
+        """Convert enum value to human-readable label."""
+        return value.replace('_', ' ').title()
+    
+    return {
+        "industries": [
+            {"value": industry.value, "label": to_label(industry.value)}
+            for industry in Industry
+        ],
+        "tones": [
+            {"value": tone.value, "label": to_label(tone.value)}
+            for tone in ToneOfVoice
+        ],
+        "language_styles": [
+            {"value": style.value, "label": to_label(style.value)}
+            for style in LanguageStyle
+        ],
+        "response_lengths": [
+            {"value": length.value, "label": to_label(length.value)}
+            for length in ResponseLength
+        ]
+    }
+
+
+
 async def get_analytics(
     days: int = 30,
     tenant: Tenant = Depends(get_current_tenant),
