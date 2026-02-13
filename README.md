@@ -105,7 +105,7 @@ This project uses a **simplified demo authentication system**. You can instantly
    - Navigate to http://localhost
    - Enter any demo ID from [DEMO_IDS.md](DEMO_IDS.md) (e.g., `DEMO-A1B2C3`)
    - Click "Access Demo"
-   - You're now logged in as the "Mohr Software Solutions" demo tenant
+   - You're now logged in as the "ZADA AI" demo tenant
 
 2. **Upload documents**
    - Login with your API key
