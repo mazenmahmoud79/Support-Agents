@@ -1,7 +1,7 @@
 # Files to ignore
 
-# Environment
-# .env - keeping .env tracked per user request
+# Environment — NEVER commit real .env files
+.env
 .env.local
 .env.production
 

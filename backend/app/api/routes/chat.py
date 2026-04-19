@@ -2,7 +2,7 @@
 Chat routes for RAG-powered conversational AI.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -13,6 +13,7 @@ from app.models.schemas import ChatRequest, ChatResponse, ConversationHistory, S
 from app.models.enums import MessageRole
 from app.services.rag_service import get_rag_service
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter, CHAT_LIMIT
 from datetime import datetime
 import json
 import asyncio
@@ -23,8 +24,10 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("", response_model=ChatResponse)
+@limiter.limit(CHAT_LIMIT)
 async def chat(
     request: ChatRequest,
+    http_request: Request,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -193,8 +196,10 @@ async def chat(
 
 
 @router.post("/stream")
+@limiter.limit(CHAT_LIMIT)
 async def chat_stream(
     request: ChatRequest,
+    http_request: Request,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

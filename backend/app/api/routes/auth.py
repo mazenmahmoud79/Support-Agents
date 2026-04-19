@@ -1,13 +1,14 @@
 """
 Authentication routes for tenant registration and login.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.database import Tenant, Analytics, DemoUser
 from app.models.schemas import TenantResponse, DemoLogin
 from app.services.vector_store import get_vector_store
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter, AUTH_LIMIT
 from datetime import datetime
 
 logger = get_logger(__name__)
@@ -16,7 +17,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/login", response_model=TenantResponse)
+@limiter.limit(AUTH_LIMIT)
 async def demo_login(
+    request: Request,
     login_data: DemoLogin,
     db: Session = Depends(get_db)
 ):

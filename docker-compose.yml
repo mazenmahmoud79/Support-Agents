@@ -1,18 +1,16 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (internal only — no host port exposure)
   postgres:
     image: postgres:15-alpine
     container_name: support-agent-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-support_agent}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password_change_this}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-support_agent_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-support_agent}" ]
       interval: 10s
@@ -21,13 +19,10 @@ services:
     networks:
       - support-agent-network
 
-  # Qdrant Vector Database
+  # Qdrant Vector Database (internal only)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: support-agent-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -38,12 +33,10 @@ services:
     networks:
       - support-agent-network
 
-  # Redis (optional caching)
+  # Redis (internal only)
   redis:
     image: redis:7-alpine
     container_name: support-agent-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -61,15 +54,15 @@ services:
       dockerfile: Dockerfile
     container_name: support-agent-backend
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-support_agent}:${POSTGRES_PASSWORD:-your_secure_password_change_this}@postgres:5432/${POSTGRES_DB:-support_agent_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-support_agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support_agent_db}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - REDIS_URL=redis://redis:6379
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - SECRET_KEY=${SECRET_KEY:-your_secret_key_change_this_to_random_string}
+      - GROQ_API_KEY=${GROQ_API_KEY:?Set GROQ_API_KEY in .env}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:?Set SUPER_ADMIN_PASSWORD in .env}
       - DEBUG=${DEBUG:-false}
-    ports:
-      - "8000:8000"
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost"]}
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,21 +70,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend/app:/app/app
-      - backend_logs:/app/logs
     restart: unless-stopped
     networks:
       - support-agent-network
 
-  # React Frontend
+  # React Frontend (only public-facing service)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
     container_name: support-agent-frontend
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -104,8 +96,6 @@ volumes:
   qdrant_data:
     driver: local
   redis_data:
-    driver: local
-  backend_logs:
     driver: local
 
 networks:

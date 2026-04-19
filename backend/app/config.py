@@ -13,14 +13,15 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI Customer Service System"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    
+
     # API Configuration
     API_V1_PREFIX: str = "/api"
-    
+
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    SUPER_ADMIN_PASSWORD: Optional[str] = None  # Required in production
     
     # Database
     DATABASE_URL: str
@@ -89,3 +90,20 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def validate_production_config():
+    """
+    Validate critical configuration for production.
+    Call on startup; raises RuntimeError if unsafe defaults detected.
+    """
+    errors = []
+    if not settings.DEBUG:
+        if not settings.SUPER_ADMIN_PASSWORD or settings.SUPER_ADMIN_PASSWORD == "admin123":
+            errors.append("SUPER_ADMIN_PASSWORD must be set to a strong value in production")
+        if settings.SECRET_KEY in ("changeme", "your_secret_key_change_this_to_random_string"):
+            errors.append("SECRET_KEY must be changed from default")
+        if not settings.GROQ_API_KEY or settings.GROQ_API_KEY.startswith("gsk_EXAMPLE"):
+            errors.append("GROQ_API_KEY must be set")
+    if errors:
+        raise RuntimeError("Production configuration errors:\n  - " + "\n  - ".join(errors))

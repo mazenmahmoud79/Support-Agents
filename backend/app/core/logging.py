@@ -1,60 +1,59 @@
 """
 Logging configuration for the application.
+Structured JSON in production, human-readable in development.
 """
+import json
 import logging
 import sys
-from pathlib import Path
+from datetime import datetime, timezone
 from app.config import settings
 
-# Create logs directory
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+
+class JsonFormatter(logging.Formatter):
+    """Emit each log record as a single JSON line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        from app.core.middleware import request_id_var  # deferred to avoid circular import
+
+        log_entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+            "request_id": request_id_var.get("-"),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry, ensure_ascii=False)
 
 
 def setup_logging():
     """Configure application logging."""
-    
-    # Create formatter
-    formatter = logging.Formatter(
-        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
-    
-    # File handler
-    file_handler = logging.FileHandler(LOG_DIR / "app.log")
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.DEBUG)
-    
-    # Error file handler
-    error_handler = logging.FileHandler(LOG_DIR / "error.log")
-    error_handler.setFormatter(formatter)
-    error_handler.setLevel(logging.ERROR)
-    
-    # Root logger
+
     root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+
+    if settings.DEBUG:
+        formatter = logging.Formatter(
+            fmt="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    else:
+        formatter = JsonFormatter()
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
+
     root_logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(error_handler)
-    
-    # Suppress noisy loggers
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    root_logger.addHandler(handler)
+
+    # Suppress noisy libraries
+    for lib in ("urllib3", "httpx", "httpcore", "watchfiles", "multipart"):
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get a logger instance.
-    
-    Args:
-        name: Logger name (usually __name__)
-    
-    Returns:
-        logging.Logger: Configured logger
-    """
+    """Get a logger instance."""
     return logging.getLogger(name)
+

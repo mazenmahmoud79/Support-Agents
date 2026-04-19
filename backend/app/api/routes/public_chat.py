@@ -16,6 +16,7 @@ from app.models.database import Tenant, ChatHistory, TenantContext
 from app.models.enums import MessageRole
 from app.services.rag_service import get_rag_service
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter, PUBLIC_CHAT_LIMIT
 
 logger = get_logger(__name__)
 
@@ -41,32 +42,24 @@ def get_tenant_by_slug(slug: str, db: Session) -> Optional[Tenant]:
 
 
 def validate_api_token(tenant: Tenant, api_token: Optional[str]) -> bool:
-    """
-    Validate the API token against the tenant's API key.
-    
-    Args:
-        tenant: The tenant object
-        api_token: The token from X-API-Token header
-        
-    Returns:
-        True if valid, raises HTTPException if invalid
-    """
+    """Validate the API token against the tenant's API key (constant-time)."""
+    import hmac
+
     if not api_token:
-        logger.warning(f"Missing API token for tenant {tenant.tenant_id}")
         raise HTTPException(
             status_code=401,
             detail="Missing API token. Include X-API-Token header.",
-            headers={"WWW-Authenticate": "X-API-Token"}
+            headers={"WWW-Authenticate": "X-API-Token"},
         )
-    
-    if api_token != tenant.api_key:
+
+    if not hmac.compare_digest(api_token, tenant.api_key):
         logger.warning(f"Invalid API token for tenant {tenant.tenant_id}")
         raise HTTPException(
             status_code=401,
             detail="Invalid API token.",
-            headers={"WWW-Authenticate": "X-API-Token"}
+            headers={"WWW-Authenticate": "X-API-Token"},
         )
-    
+
     return True
 
 
@@ -97,6 +90,7 @@ def get_tenant_context_dict(tenant_context_record) -> Optional[dict]:
 
 
 @router.post("/chat/{tenant_slug}", response_model=PublicChatResponse)
+@limiter.limit(PUBLIC_CHAT_LIMIT)
 async def public_chat(
     tenant_slug: str,
     request: PublicChatRequest,
@@ -157,6 +151,7 @@ async def public_chat(
 
 
 @router.post("/chat/{tenant_slug}/stream")
+@limiter.limit(PUBLIC_CHAT_LIMIT)
 async def public_chat_stream(
     tenant_slug: str,
     request: PublicChatRequest,

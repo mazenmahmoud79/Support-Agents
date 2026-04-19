@@ -6,7 +6,7 @@ Phase 04 additions:
 - C3: Per-document detailed stats endpoint
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
@@ -23,6 +23,7 @@ from app.models.schemas import (
 )
 from app.models.enums import FileType, DocumentStatus
 from app.services.document_processor import get_document_processor
+from app.core.rate_limit import limiter, UPLOAD_LIMIT
 from app.services.embeddings import get_embedding_service
 from app.services.vector_store import get_vector_store
 from app.services.bm25_service import get_bm25_service
@@ -40,7 +41,9 @@ _ACTIVE_STATUSES = {DocumentStatus.ACTIVE, DocumentStatus.COMPLETED}
 
 
 @router.post("/upload", response_model=List[DocumentUploadResponse])
+@limiter.limit(UPLOAD_LIMIT)
 async def upload_documents(
+    request: Request,
     files: List[UploadFile] = File(..., description="Files to upload (PDF, DOCX, TXT, CSV)"),
     category: Optional[str] = Form(None, description="Document category"),
     tenant: Tenant = Depends(get_current_tenant),
