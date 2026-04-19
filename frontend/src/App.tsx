@@ -6,6 +6,7 @@ import { ChatPage } from './pages/ChatPage';
 import { UploadPage } from './pages/UploadPage';
 import { AdminPage } from './pages/AdminPage';
 import DeployPage from './pages/DeployPage';
+import AgentAssistPage from './pages/AgentAssistPage';
 import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
 import SuperAdminPage from './pages/SuperAdminPage';
 import { Layout } from './components/layout/Layout';
@@ -34,6 +35,7 @@ function App() {
                         <Route path="upload" element={<UploadPage />} />
                         <Route path="admin" element={<AdminPage />} />
                         <Route path="deploy" element={<DeployPage />} />
+                        <Route path="agent-assist" element={<AgentAssistPage />} />
                         {/* Redirect old routes */}
                         <Route path="integration" element={<Navigate to="/deploy" />} />
                         <Route path="preview/*" element={<Navigate to="/deploy" />} />

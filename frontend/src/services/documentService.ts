@@ -83,4 +83,28 @@ export const documentService = {
         const response = await apiClient.get<DocumentStats>('/documents/stats/summary');
         return response.data;
     },
+
+    // ==================== Phase 04: Document Lifecycle (C2, C3) ====================
+
+    /**
+     * Publish a DRAFT document to ACTIVE retrieval.
+     */
+    publishDocument: async (documentId: number): Promise<void> => {
+        await apiClient.post(`/documents/${documentId}/publish`);
+    },
+
+    /**
+     * Archive an ACTIVE document (removes from retrieval, keeps data).
+     */
+    archiveDocument: async (documentId: number): Promise<void> => {
+        await apiClient.post(`/documents/${documentId}/archive`);
+    },
+
+    /**
+     * Get detailed per-document stats (chunks, language breakdown, warnings).
+     */
+    getDocumentStats: async (documentId: number): Promise<any> => {
+        const response = await apiClient.get(`/documents/${documentId}/stats`);
+        return response.data;
+    },
 };

@@ -22,6 +22,33 @@ export enum DocumentStatus {
     PROCESSING = 'processing',
     COMPLETED = 'completed',
     FAILED = 'failed',
+    // Phase 04 explicit lifecycle
+    DRAFT = 'draft',
+    ACTIVE = 'active',
+    ARCHIVED = 'archived',
+    DEPRECATED = 'deprecated',
+}
+
+// Phase 04 enums
+export enum FeedbackType {
+    THUMBS_UP = 'thumbs_up',
+    THUMBS_DOWN = 'thumbs_down',
+    AGENT_CORRECTION = 'agent_correction',
+}
+
+export enum ImprovementStatus {
+    NEEDS_REVIEW = 'needs_review',
+    IN_PROGRESS = 'in_progress',
+    RESOLVED = 'resolved',
+    DISMISSED = 'dismissed',
+}
+
+export enum QueryType {
+    FAQ = 'faq',
+    POLICY = 'policy',
+    TROUBLESHOOTING = 'troubleshooting',
+    TABLE = 'table',
+    GENERAL = 'general',
 }
 
 // ==================== API Types ====================
@@ -69,6 +96,11 @@ export interface SourceDocument {
     chunk_index: number;
     relevance_score: number;
     snippet: string;
+    // Phase 04 extended fields
+    page_number?: number;
+    section_title?: string;
+    chunk_type?: string;
+    source_number?: number;
 }
 
 export interface ChatResponse {
@@ -77,6 +109,38 @@ export interface ChatResponse {
     sources?: SourceDocument[];
     response_time: number;
     timestamp: string;
+    // Phase 04
+    escalated?: boolean;
+    confidence_score?: number;
+}
+
+// Phase 04 feedback types
+export interface FeedbackRequest {
+    session_id: string;
+    message_id: string;
+    feedback_type: FeedbackType;
+    query?: string;
+    response?: string;
+    source_documents?: SourceDocument[];
+}
+
+export interface AgentCorrectionRequest {
+    session_id: string;
+    message_id: string;
+    original_query: string;
+    original_response: string;
+    corrected_response: string;
+}
+
+export interface ImprovementQueueItem {
+    id: number;
+    session_id: string;
+    query: string;
+    response?: string;
+    feedback_type: FeedbackType;
+    improvement_status: ImprovementStatus;
+    correction_text?: string;
+    created_at: string;
 }
 
 export interface Analytics {

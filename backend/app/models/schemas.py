@@ -4,7 +4,10 @@ Pydantic schemas for request/response validation.
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, validator
-from .enums import FileType, MessageRole, DocumentStatus, Industry, ToneOfVoice, LanguageStyle, ResponseLength
+from .enums import (
+    FileType, MessageRole, DocumentStatus, Industry, ToneOfVoice, LanguageStyle, ResponseLength,
+    FeedbackType, QueryType, ImprovementStatus,
+)
 
 
 # ==================== Tenant Schemas ====================
@@ -170,10 +173,14 @@ class ChatRequest(BaseModel):
 
 
 class SourceDocument(BaseModel):
-    """Schema for source document attribution."""
-    document_id: int
+    """Schema for source document attribution — Phase 04 enhanced citations."""
+    source_number: Optional[int] = None
+    document_id: Optional[int] = None
     filename: str
-    chunk_index: int
+    page_number: Optional[int] = None
+    section_title: Optional[str] = None
+    chunk_type: Optional[str] = None
+    chunk_index: Optional[int] = None
     relevance_score: float
     snippet: str = Field(..., max_length=500, description="Relevant text snippet")
 
@@ -185,6 +192,8 @@ class ChatResponse(BaseModel):
     sources: Optional[List[SourceDocument]] = None
     response_time: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    escalated: bool = False
+    confidence_score: Optional[float] = None
 
 
 class StreamChunk(BaseModel):
@@ -245,3 +254,106 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ==================== Phase 04 Schemas ====================
+
+class FeedbackRequest(BaseModel):
+    """Schema for submitting thumbs-up / thumbs-down on a chat message."""
+    session_id: str
+    message_id: Optional[str] = None
+    feedback_type: FeedbackType
+    query: Optional[str] = None
+    response: Optional[str] = None
+    source_documents: Optional[List[Dict[str, Any]]] = None
+
+
+class AgentCorrectionRequest(BaseModel):
+    """Schema for an agent submitting a corrected answer."""
+    session_id: str
+    message_id: Optional[str] = None
+    original_query: Optional[str] = None
+    original_response: Optional[str] = None
+    corrected_response: str = Field(..., min_length=1)
+    source_documents: Optional[List[Dict[str, Any]]] = None
+
+
+class FeedbackResponse(BaseModel):
+    """Schema for feedback submission response."""
+    id: int
+    feedback_type: FeedbackType
+    improvement_status: ImprovementStatus
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EscalationLogResponse(BaseModel):
+    """Schema for an escalation log entry."""
+    id: int
+    tenant_id: str
+    session_id: str
+    query: str
+    query_type: Optional[QueryType]
+    top_score: Optional[float]
+    reason: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ImprovementQueueItem(BaseModel):
+    """Schema for an item in the admin improvement queue."""
+    id: int
+    tenant_id: str
+    session_id: str
+    feedback_type: FeedbackType
+    improvement_status: ImprovementStatus
+    correction_text: Optional[str]
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentLifecycleResponse(BaseModel):
+    """Schema for document publish/archive action response."""
+    document_id: int
+    filename: str
+    status: DocumentStatus
+    message: str
+
+
+class DocumentDetailStats(BaseModel):
+    """Per-document detailed stats shown in admin preview before publish."""
+    document_id: int
+    filename: str
+    status: DocumentStatus
+    chunk_count: int
+    file_type: str
+    file_size: int
+    upload_date: datetime
+    language_distribution: Dict[str, int] = {}
+    chunk_type_breakdown: Dict[str, int] = {}
+    parsing_warnings: List[str] = []
+    page_count: Optional[int] = None
+
+
+class WhatsAppWebhookPayload(BaseModel):
+    """Schema for incoming WhatsApp Cloud API webhook payload."""
+    object: str
+    entry: List[Dict[str, Any]]
+
+
+class WhatsAppSessionResponse(BaseModel):
+    """Schema for WhatsApp session info."""
+    wa_id: str
+    tenant_id: str
+    session_id: str
+    created_at: datetime
+    last_message_at: datetime
+
+    class Config:
+        from_attributes = True

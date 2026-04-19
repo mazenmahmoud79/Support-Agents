@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.db.session import get_db
 from app.api.deps import get_current_tenant
-from app.models.database import Tenant, ChatHistory, Analytics, TenantContext
+from app.models.database import Tenant, ChatHistory, Analytics, TenantContext, EscalationLog
 from app.models.schemas import ChatRequest, ChatResponse, ConversationHistory, SourceDocument
 from app.models.enums import MessageRole
 from app.services.rag_service import get_rag_service
@@ -84,7 +84,7 @@ async def chat(
     
     try:
         # Execute RAG pipeline with tenant context
-        response_text, sources, response_time = await rag_service.query(
+        response_text, sources, response_time, escalated, top_score, query_type = await rag_service.query(
             user_message=request.message,
             tenant_id=tenant.tenant_id,
             company_name=tenant.name,
@@ -114,6 +114,18 @@ async def chat(
             response_time=response_time
         )
         db.add(assistant_message)
+
+        # Log escalation event if confidence gate triggered
+        if escalated:
+            escalation = EscalationLog(
+                tenant_id=tenant.tenant_id,
+                session_id=request.session_id,
+                query=request.message,
+                query_type=query_type,
+                top_score=top_score,
+                reason="low_confidence",
+            )
+            db.add(escalation)
         
         # Update analytics
         today = datetime.utcnow().date()
@@ -153,7 +165,9 @@ async def chat(
             session_id=request.session_id,
             sources=source_documents,
             response_time=response_time,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
+            escalated=escalated,
+            confidence_score=top_score,
         )
     
     except Exception as e:
@@ -243,7 +257,7 @@ async def chat_stream(
         
         try:
             # Stream RAG response with tenant context
-            async for chunk, chunk_sources, is_final in rag_service.query_stream(
+            async for chunk, chunk_sources, is_final, escalated, top_score, query_type in rag_service.query_stream(
                 user_message=request.message,
                 tenant_id=tenant.tenant_id,
                 company_name=tenant.name,
@@ -310,13 +324,28 @@ async def chat_stream(
             analytics.avg_response_time = analytics.total_response_time / analytics.query_count
             
             db.commit()
+
+            # Log escalation in streaming path (same as non-stream)
+            if escalated:
+                escalation = EscalationLog(
+                    tenant_id=tenant.tenant_id,
+                    session_id=request.session_id,
+                    query=request.message,
+                    query_type=query_type,
+                    top_score=top_score,
+                    reason="low_confidence",
+                )
+                db.add(escalation)
+                db.commit()
             
             # Send final message with sources
             final_data = {
                 "content": "",
                 "is_final": True,
                 "sources": sources if request.include_sources else None,
-                "response_time": response_time
+                "response_time": response_time,
+                "escalated": escalated,
+                "confidence_score": top_score,
             }
             yield f"data: {json.dumps(final_data)}\n\n"
             

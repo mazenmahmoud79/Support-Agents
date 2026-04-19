@@ -29,7 +29,7 @@ export const chatService = {
     sendMessageStream: async (
         request: ChatRequest,
         onChunk: (chunk: string) => void,
-        onComplete: (sources: any[], responseTime: number) => void,
+        onComplete: (sources: any[], responseTime: number, escalated?: boolean, confidenceScore?: number) => void,
         onError: (error: Error) => void
     ): Promise<void> => {
         const apiKey = localStorage.getItem('apiKey');
@@ -84,7 +84,12 @@ export const chatService = {
                             }
 
                             if (data.is_final) {
-                                onComplete(data.sources || [], data.response_time || 0);
+                                onComplete(
+                                    data.sources || [],
+                                    data.response_time || 0,
+                                    data.escalated ?? false,
+                                    data.confidence_score
+                                );
                                 return;
                             }
                         } catch (e) {

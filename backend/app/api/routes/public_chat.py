@@ -134,7 +134,7 @@ async def public_chat(
     rag_service = get_rag_service()
     
     try:
-        response, sources, response_time = await rag_service.query(
+        response, sources, response_time, escalated, top_score, query_type = await rag_service.query(
             user_message=request.message,
             tenant_id=tenant.tenant_id,
             company_name=tenant.name,
@@ -143,7 +143,7 @@ async def public_chat(
             tenant_context=tenant_context
         )
         
-        logger.info(f"Public chat response generated for {tenant_slug} in {response_time:.2f}s")
+        logger.info(f"Public chat response generated for {tenant_slug} in {response_time:.2f}s (escalated={escalated})")
         
         return PublicChatResponse(
             response=response,
@@ -200,7 +200,7 @@ async def public_chat_stream(
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
             
             # Stream the response with tenant context
-            async for chunk, sources, is_final in rag_service.query_stream(
+            async for chunk, sources, is_final, escalated, top_score, query_type in rag_service.query_stream(
                 user_message=request.message,
                 tenant_id=tenant.tenant_id,
                 company_name=tenant.name,

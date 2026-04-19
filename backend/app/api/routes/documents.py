@@ -1,5 +1,9 @@
 """
 Document management routes for uploading, listing, updating, and deleting documents.
+
+Phase 04 additions:
+- C2: Explicit publish (→ ACTIVE) and archive (→ ARCHIVED) actions
+- C3: Per-document detailed stats endpoint
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
@@ -8,11 +12,20 @@ from sqlalchemy import func
 from app.db.session import get_db
 from app.api.deps import get_current_tenant
 from app.models.database import Tenant, Document
-from app.models.schemas import DocumentUploadResponse, DocumentResponse, DocumentUpdate, BulkDeleteRequest, DocumentStats
+from app.models.schemas import (
+    DocumentUploadResponse,
+    DocumentResponse,
+    DocumentUpdate,
+    BulkDeleteRequest,
+    DocumentStats,
+    DocumentLifecycleResponse,
+    DocumentDetailStats,
+)
 from app.models.enums import FileType, DocumentStatus
 from app.services.document_processor import get_document_processor
 from app.services.embeddings import get_embedding_service
 from app.services.vector_store import get_vector_store
+from app.services.bm25_service import get_bm25_service
 from app.config import settings
 from app.core.logging import get_logger
 from datetime import datetime
@@ -21,6 +34,9 @@ import asyncio
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+# Statuses that are included in retrieval
+_ACTIVE_STATUSES = {DocumentStatus.ACTIVE, DocumentStatus.COMPLETED}
 
 
 @router.post("/upload", response_model=List[DocumentUploadResponse])
@@ -120,20 +136,23 @@ async def upload_documents(
                     embeddings=embeddings
                 )
                 
-                # Update document status
+                # Update document status — DRAFT awaits admin publish action
                 document.chunk_count = len(chunks)
-                document.status = DocumentStatus.COMPLETED
+                document.status = DocumentStatus.DRAFT
                 db.commit()
+
+                # Invalidate BM25 cache so next query rebuilds with new chunks
+                get_bm25_service().invalidate(tenant.tenant_id)
                 
-                logger.info(f"Successfully processed {file.filename}: {len(chunks)} chunks")
+                logger.info(f"Successfully processed {file.filename}: {len(chunks)} chunks → DRAFT")
                 
                 results.append(DocumentUploadResponse(
                     document_id=document.id,
                     filename=file.filename,
                     file_type=file_type,
                     file_size=file_size,
-                    status=DocumentStatus.COMPLETED,
-                    message=f"Processed successfully: {len(chunks)} chunks"
+                    status=DocumentStatus.DRAFT,
+                    message=f"Processed successfully: {len(chunks)} chunks. Awaiting admin publish."
                 ))
                 
             except Exception as e:
@@ -279,6 +298,9 @@ async def delete_document(
     # Delete from database
     db.delete(document)
     db.commit()
+
+    # Invalidate BM25 cache so deleted doc is excluded
+    get_bm25_service().invalidate(tenant.tenant_id)
     
     logger.info(f"Deleted document {document_id}")
     
@@ -323,6 +345,10 @@ async def batch_delete_documents(
             errors.append({"document_id": document_id, "error": str(e)})
     
     db.commit()
+
+    # Invalidate BM25 cache after batch deletion
+    if deleted_count > 0:
+        get_bm25_service().invalidate(tenant.tenant_id)
     
     return {
         "deleted_count": deleted_count,
@@ -355,7 +381,7 @@ async def get_document_stats(
     ).scalar() or 0
     
     # Documents by type
-    type counts = db.query(
+    type_counts = db.query(
         Document.file_type, func.count(Document.id)
     ).filter(
         Document.tenant_id == tenant.tenant_id
@@ -374,4 +400,164 @@ async def get_document_stats(
         total_size_bytes=int(total_size),
         documents_by_type=documents_by_type,
         recent_uploads=recent
+    )
+
+
+# ==================== Phase 04: Document Lifecycle (C2 + C3) ====================
+
+@router.post("/{document_id}/publish", response_model=DocumentLifecycleResponse)
+async def publish_document(
+    document_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """
+    Explicitly publish a DRAFT document to ACTIVE retrieval.
+
+    Publishing is a deliberate admin action — documents never become ACTIVE automatically.
+    """
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.tenant_id == tenant.tenant_id,
+    ).first()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if document.status not in {DocumentStatus.DRAFT, DocumentStatus.ARCHIVED}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only DRAFT or ARCHIVED documents can be published. Current status: {document.status}",
+        )
+
+    document.status = DocumentStatus.ACTIVE
+    db.commit()
+    # No BM25 invalidation needed here — ACTIVE docs are already indexed
+
+    logger.info(f"Document {document_id} published to ACTIVE by tenant {tenant.tenant_id}")
+    return DocumentLifecycleResponse(
+        document_id=document.id,
+        filename=document.filename,
+        status=DocumentStatus.ACTIVE,
+        message="Document is now ACTIVE and included in retrieval.",
+    )
+
+
+@router.post("/{document_id}/archive", response_model=DocumentLifecycleResponse)
+async def archive_document(
+    document_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """
+    Archive an ACTIVE document — removes it from retrieval without deleting it.
+    """
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.tenant_id == tenant.tenant_id,
+    ).first()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    document.status = DocumentStatus.ARCHIVED
+    db.commit()
+
+    # Invalidate BM25 cache so archived doc is excluded from next search
+    get_bm25_service().invalidate(tenant.tenant_id)
+
+    logger.info(f"Document {document_id} archived by tenant {tenant.tenant_id}")
+    return DocumentLifecycleResponse(
+        document_id=document.id,
+        filename=document.filename,
+        status=DocumentStatus.ARCHIVED,
+        message="Document archived and removed from retrieval.",
+    )
+
+
+@router.get("/{document_id}/stats", response_model=DocumentDetailStats)
+async def get_document_detail_stats(
+    document_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """
+    Return per-document stats for admin review before publishing.
+
+    Includes chunk count, language distribution, chunk type breakdown,
+    page count, and any parsing warnings.
+    """
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.tenant_id == tenant.tenant_id,
+    ).first()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Fetch chunk metadata from vector store to compute distributions
+    vector_store = get_vector_store()
+    client = await vector_store._get_client()
+    collection_name = vector_store._get_collection_name(tenant.tenant_id)
+
+    language_dist: dict = {}
+    chunk_type_dist: dict = {}
+    page_count: int = 0
+    warnings: list = []
+
+    try:
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        offset = None
+        while True:
+            scroll_kwargs = dict(
+                collection_name=collection_name,
+                limit=200,
+                with_payload=True,
+                with_vectors=False,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
+                ),
+            )
+            if offset is not None:
+                scroll_kwargs["offset"] = offset
+
+            result = client.scroll(**scroll_kwargs)
+            points, next_offset = result if isinstance(result, tuple) else (result, None)
+
+            for point in points:
+                payload = point.payload or {}
+                lang = payload.get("language", "unknown")
+                language_dist[lang] = language_dist.get(lang, 0) + 1
+
+                ctype = payload.get("chunk_type", "paragraph")
+                chunk_type_dist[ctype] = chunk_type_dist.get(ctype, 0) + 1
+
+                pg = payload.get("page_number")
+                if pg and pg > page_count:
+                    page_count = pg
+
+                if payload.get("ocr_confidence") and payload["ocr_confidence"] < 0.6:
+                    warnings.append(
+                        f"Low OCR confidence ({payload['ocr_confidence']:.2f}) on page {pg or '?'}"
+                    )
+
+            if not next_offset:
+                break
+            offset = next_offset
+    except Exception as exc:
+        logger.warning(f"Could not fetch chunk details for document {document_id}: {exc}")
+        warnings.append("Could not fetch detailed chunk metadata from vector store.")
+
+    return DocumentDetailStats(
+        document_id=document.id,
+        filename=document.filename,
+        status=document.status,
+        chunk_count=document.chunk_count or 0,
+        file_type=document.file_type.value,
+        file_size=document.file_size,
+        upload_date=document.upload_date,
+        language_distribution=language_dist,
+        chunk_type_breakdown=chunk_type_dist,
+        parsing_warnings=warnings,
+        page_count=page_count if page_count > 0 else None,
     )

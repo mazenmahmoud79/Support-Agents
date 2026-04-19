@@ -35,6 +35,12 @@ python-docx>=1.1.0
 pandas>=2.1.0
 openpyxl>=3.1.2
 
+# Phase 04: BM25 sparse retrieval
+rank-bm25>=0.2.2
+
+# WhatsApp integration
+httpx>=0.26.0
+
 # Caching (optional)
 redis>=5.0.1
 

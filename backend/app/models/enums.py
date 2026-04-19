@@ -18,11 +18,42 @@ class MessageRole(str, Enum):
 
 
 class DocumentStatus(str, Enum):
-    """Document processing status."""
+    """Document processing status and lifecycle state."""
+    # Processing pipeline states
     PENDING = "pending"
     PROCESSING = "processing"
-    COMPLETED = "completed"
     FAILED = "failed"
+    # Knowledge lifecycle states (Phase 04)
+    DRAFT = "draft"        # Processed but not yet published — awaits admin review
+    ACTIVE = "active"      # Published and included in retrieval
+    ARCHIVED = "archived"  # Removed from retrieval, kept for reference
+    DEPRECATED = "deprecated"  # Superseded by a newer version
+    # Legacy alias kept for backward compatibility
+    COMPLETED = "completed"  # Treated as ACTIVE in retrieval filters
+
+
+class FeedbackType(str, Enum):
+    """Type of feedback on a chat response."""
+    THUMBS_UP = "thumbs_up"
+    THUMBS_DOWN = "thumbs_down"
+    AGENT_CORRECTION = "agent_correction"
+
+
+class QueryType(str, Enum):
+    """Classified query type used to route retrieval."""
+    FAQ = "faq"
+    POLICY = "policy"
+    TROUBLESHOOTING = "troubleshooting"
+    TABLE = "table"
+    GENERAL = "general"
+
+
+class ImprovementStatus(str, Enum):
+    """Status of an item in the admin improvement queue."""
+    NEEDS_REVIEW = "needs_review"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
 
 
 # ==================== Tenant Context Enums ====================

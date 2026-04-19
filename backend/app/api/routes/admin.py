@@ -1,14 +1,14 @@
 """
 Admin routes for dashboard, analytics, and system health.
 """
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from app.db.session import get_db
 from app.api.deps import get_current_tenant
-from app.models.database import Tenant, Document, ChatHistory, Analytics, DemoUser, TenantContext
-from app.models.schemas import AnalyticsResponse, HealthCheck, DemoUserCreate, DemoUserResponse, TenantContextUpdate, TenantContextResponse
+from app.models.database import Tenant, Document, ChatHistory, Analytics, DemoUser, TenantContext, EscalationLog
+from app.models.schemas import AnalyticsResponse, HealthCheck, DemoUserCreate, DemoUserResponse, TenantContextUpdate, TenantContextResponse, EscalationLogResponse
 from app.models.enums import Industry, ToneOfVoice, LanguageStyle, ResponseLength
 from app.services.vector_store import get_vector_store
 from app.services.llm_service import get_llm_service
@@ -347,3 +347,42 @@ async def delete_demo_user(
     logger.info(f"Demo user deactivated: {demo_id}")
     
     return {"message": "Demo user deactivated successfully", "demo_id": demo_id}
+
+
+# ==================== Phase 04: Escalation Log (A5) ====================
+
+@router.get("/escalations", response_model=List[EscalationLogResponse])
+async def list_escalations(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    session_id: Optional[str] = Query(None),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """
+    List escalation log entries for admin review (A5).
+
+    Returns queries that were escalated due to low confidence or abstention,
+    ordered by most recent first.
+    """
+    q = db.query(EscalationLog).filter(
+        EscalationLog.tenant_id == tenant.tenant_id
+    )
+    if session_id:
+        q = q.filter(EscalationLog.session_id == session_id)
+
+    records = q.order_by(EscalationLog.timestamp.desc()).offset(offset).limit(limit).all()
+
+    return [
+        EscalationLogResponse(
+            id=r.id,
+            session_id=r.session_id,
+            tenant_id=r.tenant_id,
+            query=r.query,
+            query_type=r.query_type,
+            top_score=r.top_score,
+            reason=r.reason,
+            timestamp=r.timestamp,
+        )
+        for r in records
+    ]

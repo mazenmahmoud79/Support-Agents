@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     CONVERSATION_HISTORY_LENGTH: int = 5
     ENABLE_RERANKING: bool = True  # Enable cross-encoder re-ranking
     RERANK_TOP_K: int = 8  # Number of chunks to keep after re-ranking
+
+    # Phase 04: Hybrid Retrieval & Trust Engine
+    ENABLE_BM25: bool = True                  # Run BM25 alongside dense retrieval
+    BM25_TOP_K: int = 10                      # BM25 candidates before RRF fusion
+    RRF_K: int = 60                           # Reciprocal Rank Fusion constant
+    ABSTENTION_THRESHOLD: float = 0.35        # Below this top rerank score → escalate
+    CONFIDENCE_MODERATE_THRESHOLD: float = 0.55  # Below this → show uncertainty language
+
+    # Phase 04: WhatsApp Integration
+    WHATSAPP_TOKEN: Optional[str] = None      # WhatsApp Cloud API access token
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_VERIFY_TOKEN: Optional[str] = None  # Webhook verify token
+    WHATSAPP_APP_SECRET: Optional[str] = None  # Facebook App Secret for webhook signature verification
     
     # Redis (optional)
     REDIS_URL: Optional[str] = None

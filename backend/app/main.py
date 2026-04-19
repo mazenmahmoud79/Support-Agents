@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.session import init_db
-from app.api.routes import auth, documents, chat, admin, public_chat, super_admin
+from app.api.routes import auth, documents, chat, admin, public_chat, super_admin, feedback, whatsapp
 
 # Setup logging
 setup_logging()
@@ -64,6 +64,10 @@ app.include_router(public_chat.router)
 
 # Super Admin API
 app.include_router(super_admin.router, prefix=settings.API_V1_PREFIX)
+
+# Phase 04 routes
+app.include_router(feedback.router, prefix=settings.API_V1_PREFIX)
+app.include_router(whatsapp.router)  # uses /integrations/whatsapp prefix internally
 
 
 # Root endpoint

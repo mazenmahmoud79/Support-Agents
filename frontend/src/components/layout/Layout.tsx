@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { MessageSquare, Upload, BarChart3, LogOut, Plug } from 'lucide-react';
+import { MessageSquare, Upload, BarChart3, LogOut, Plug, Headphones } from 'lucide-react';
 import { useAuthStore } from '../../hooks/useAuth';
 import './Layout.css';
 
@@ -19,6 +19,10 @@ export const Layout: React.FC = () => {
                     <NavLink to="/" className="nav-link" end>
                         <MessageSquare size={18} />
                         <span>Chat</span>
+                    </NavLink>
+                    <NavLink to="/agent-assist" className="nav-link">
+                        <Headphones size={18} />
+                        <span>Agent Assist</span>
                     </NavLink>
                     <NavLink to="/upload" className="nav-link">
                         <Upload size={18} />

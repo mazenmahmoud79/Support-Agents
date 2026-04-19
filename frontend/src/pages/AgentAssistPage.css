@@ -1,0 +1,254 @@
+.agent-assist-page {
+    padding: 2rem;
+    max-width: 860px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.375rem;
+}
+
+.page-subtitle {
+    color: #64748b;
+    font-size: 0.9rem;
+    margin: 0 0 1.5rem;
+}
+
+/* Search bar */
+.assist-search-bar {
+    display: flex;
+    gap: 0.625rem;
+    margin-bottom: 1.25rem;
+}
+
+.assist-search-bar input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.assist-search-bar input:focus {
+    border-color: #94a3b8;
+}
+
+.assist-search-btn {
+    width: 44px;
+    height: 44px;
+    background: #0f172a;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.assist-search-btn:hover:not(:disabled) {
+    background: #1e293b;
+}
+
+.assist-search-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.spinner {
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Error */
+.assist-error {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+/* Result container */
+.assist-result {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Weak evidence warning */
+.assist-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: #c2410c;
+}
+
+/* Answer box */
+.assist-answer-box {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.assist-answer-label {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0.625rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.assist-confidence {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.73rem;
+    font-weight: 700;
+}
+
+.assist-confidence.high {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.assist-confidence.medium {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.assist-confidence.low {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.assist-answer-content {
+    padding: 1rem 1.125rem;
+    font-size: 0.9rem;
+    color: #0f172a;
+    line-height: 1.65;
+}
+
+.assist-answer-content p {
+    margin: 0 0 0.5rem;
+}
+
+.assist-answer-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Sources */
+.assist-sources {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.assist-sources-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 1rem;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: #475569;
+    font-weight: 600;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.assist-sources-toggle:hover {
+    background: #f1f5f9;
+}
+
+.assist-sources-list {
+    padding: 0.5rem 0.75rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.assist-source-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+.assist-source-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.25rem;
+}
+
+.assist-source-num {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 0.78rem;
+}
+
+.assist-source-filename {
+    font-weight: 600;
+    color: #1e40af;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.assist-source-page {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.73rem;
+}
+
+.assist-source-score {
+    color: #94a3b8;
+    font-size: 0.73rem;
+    margin-left: auto;
+}
+
+.assist-source-section {
+    color: #475569;
+    font-style: italic;
+    font-size: 0.78rem;
+    margin-bottom: 0.25rem;
+}
+
+.assist-source-snippet {
+    color: #64748b;
+    margin: 0.2rem 0 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

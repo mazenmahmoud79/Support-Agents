@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, X, FileText, CheckCircle, XCircle, Cloud } from 'lucide-react';
 import { documentService } from '../../services/documentService';
@@ -18,7 +18,6 @@ interface FileWithProgress {
 }
 
 // Global state for Google API
-let gapiLoaded = false;
 let gisLoaded = false;
 let tokenClient: any = null;
 let accessToken: string | null = null;
@@ -31,8 +30,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
     const [driveError, setDriveError] = useState<string | null>(null);
     const [isDriveLoading, setIsDriveLoading] = useState(false);
     const [isApiReady, setIsApiReady] = useState(false);
-    
-    const onPickCompleteRef = useRef<((files: any[]) => void) | null>(null);
 
     const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
     const apiKey = import.meta.env.VITE_GOOGLE_DRIVE_API_KEY;

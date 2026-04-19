@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { documentService } from '../services/documentService';
 import { tenantContextService } from '../services/tenantContextService';
-import { Document, TenantContextUpdate, ContextOptions } from '../types';
-import { FileText, Trash2, Settings, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { Document, DocumentStatus, TenantContextUpdate, ContextOptions } from '../types';
+import { FileText, Trash2, Settings, ChevronDown, ChevronUp, Save, CheckCircle, Archive, BarChart2, AlertTriangle } from 'lucide-react';
 import './AdminPage.css';
 
 export const AdminPage: React.FC = () => {
@@ -17,6 +17,9 @@ export const AdminPage: React.FC = () => {
     const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const [formData, setFormData] = useState<TenantContextUpdate>({});
+
+    const [docStats, setDocStats] = useState<Record<number, any>>({});
+    const [statsLoading, setStatsLoading] = useState<Record<number, boolean>>({});
 
     useEffect(() => {
         loadDocuments();
@@ -68,6 +71,41 @@ export const AdminPage: React.FC = () => {
             setDocuments((prev) => prev.filter((doc) => doc.id !== id));
         } catch (error) {
             console.error('Failed to delete:', error);
+        }
+    };
+
+    const handlePublish = async (id: number) => {
+        try {
+            await documentService.publishDocument(id);
+            setDocuments((prev) =>
+                prev.map((d) => (d.id === id ? { ...d, status: DocumentStatus.ACTIVE } : d))
+            );
+        } catch (error) {
+            console.error('Failed to publish:', error);
+        }
+    };
+
+    const handleArchive = async (id: number) => {
+        try {
+            await documentService.archiveDocument(id);
+            setDocuments((prev) =>
+                prev.map((d) => (d.id === id ? { ...d, status: DocumentStatus.ARCHIVED } : d))
+            );
+        } catch (error) {
+            console.error('Failed to archive:', error);
+        }
+    };
+
+    const loadDocStats = async (id: number) => {
+        if (docStats[id] || statsLoading[id]) return;
+        setStatsLoading((prev) => ({ ...prev, [id]: true }));
+        try {
+            const stats = await documentService.getDocumentStats(id);
+            setDocStats((prev) => ({ ...prev, [id]: stats }));
+        } catch (error) {
+            console.error('Failed to load doc stats:', error);
+        } finally {
+            setStatsLoading((prev) => ({ ...prev, [id]: false }));
         }
     };
 
@@ -295,25 +333,93 @@ export const AdminPage: React.FC = () => {
                         <div className="empty-state">No documents uploaded yet.</div>
                     ) : (
                         <div>
-                            {documents.map((doc) => (
-                                <div key={doc.id} className="document-item">
-                                    <div className="document-info">
-                                        <FileText size={18} className="document-icon" />
-                                        <div>
-                                            <div className="document-name">{doc.filename}</div>
-                                            <div className="document-meta">
-                                                {doc.chunk_count} chunks
+                            {documents.map((doc) => {
+                                const stats = docStats[doc.id];
+                                const isDraft = doc.status === DocumentStatus.DRAFT || doc.status === DocumentStatus.PENDING;
+                                const isActive = doc.status === DocumentStatus.ACTIVE || doc.status === DocumentStatus.COMPLETED;
+                                const isArchived = doc.status === DocumentStatus.ARCHIVED;
+
+                                return (
+                                    <div key={doc.id} className="document-item">
+                                        <div className="document-info">
+                                            <FileText size={18} className="document-icon" />
+                                            <div>
+                                                <div className="document-name">{doc.filename}</div>
+                                                <div className="document-meta">
+                                                    {doc.chunk_count} chunks
+                                                    {stats?.page_count ? ` · ${stats.page_count} pages` : ''}
+                                                    {stats?.language_distribution
+                                                        ? ` · ${Object.keys(stats.language_distribution).join('/')}`
+                                                        : ''}
+                                                </div>
+                                                {stats?.parsing_warnings?.length > 0 && (
+                                                    <div className="doc-warnings">
+                                                        <AlertTriangle size={12} />
+                                                        {stats.parsing_warnings[0]}
+                                                        {stats.parsing_warnings.length > 1 &&
+                                                            ` (+${stats.parsing_warnings.length - 1} more)`}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
+                                        <div className="document-actions-row">
+                                            {/* Status badge */}
+                                            <span className={`doc-status-badge doc-status-${doc.status}`}>
+                                                {doc.status.toUpperCase()}
+                                            </span>
+
+                                            {/* Stats preview button */}
+                                            <button
+                                                className="doc-action-btn stats-btn"
+                                                title="Preview stats"
+                                                onClick={() => loadDocStats(doc.id)}
+                                            >
+                                                <BarChart2 size={14} />
+                                            </button>
+
+                                            {/* Publish button (for DRAFT) */}
+                                            {isDraft && (
+                                                <button
+                                                    className="doc-action-btn publish-btn"
+                                                    title="Publish to Active"
+                                                    onClick={() => handlePublish(doc.id)}
+                                                >
+                                                    <CheckCircle size={14} /> Publish
+                                                </button>
+                                            )}
+
+                                            {/* Archive button (for ACTIVE) */}
+                                            {isActive && (
+                                                <button
+                                                    className="doc-action-btn archive-btn"
+                                                    title="Archive document"
+                                                    onClick={() => handleArchive(doc.id)}
+                                                >
+                                                    <Archive size={14} /> Archive
+                                                </button>
+                                            )}
+
+                                            {/* Re-publish button (for ARCHIVED) */}
+                                            {isArchived && (
+                                                <button
+                                                    className="doc-action-btn publish-btn"
+                                                    title="Re-publish to Active"
+                                                    onClick={() => handlePublish(doc.id)}
+                                                >
+                                                    <CheckCircle size={14} /> Re-publish
+                                                </button>
+                                            )}
+
+                                            <button
+                                                className="document-delete"
+                                                onClick={() => handleDelete(doc.id)}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <button
-                                        className="document-delete"
-                                        onClick={() => handleDelete(doc.id)}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
