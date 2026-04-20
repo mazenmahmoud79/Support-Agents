@@ -2,24 +2,21 @@
 Security utilities for authentication and authorization.
 """
 import secrets
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from app.config import settings
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
     """Hash a plain-text password."""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain-text password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 def generate_api_key() -> str:
@@ -33,30 +30,11 @@ def generate_api_key() -> str:
 
 
 def verify_api_key(plain_key: str, hashed_key: str) -> bool:
-    """
-    Verify an API key against its hash.
-    
-    Args:
-        plain_key: Plain text API key
-        hashed_key: Hashed API key
-    
-    Returns:
-        bool: True if key matches, False otherwise
-    """
-    return pwd_context.verify(plain_key, hashed_key)
+    return bcrypt.checkpw(plain_key.encode(), hashed_key.encode())
 
 
 def hash_api_key(api_key: str) -> str:
-    """
-    Hash an API key for storage.
-    
-    Args:
-        api_key: Plain text API key
-    
-    Returns:
-        str: Hashed API key
-    """
-    return pwd_context.hash(api_key)
+    return bcrypt.hashpw(api_key.encode(), bcrypt.gensalt()).decode()
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
