@@ -134,11 +134,6 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-
-    """Schema for demo user login."""
-    demo_id: str = Field(..., min_length=6, max_length=50, description="Demo access ID")
-
-
 class DemoUserCreate(BaseModel):
     """Schema for creating a demo user."""
     name: Optional[str] = Field(None, max_length=255, description="Optional user label/name")

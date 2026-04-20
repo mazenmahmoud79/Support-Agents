@@ -157,19 +157,30 @@ export const ChatInterface: React.FC = () => {
     };
 
     return (
-        <div className="chat-container">
-            <div className="messages-container">
+        <div className="chat-interface">
+            <div className="chat-header">
+                <div className="chat-bot-avatar">Z</div>
+                <div className="chat-header-info">
+                    <h3>Zada AI</h3>
+                    <span className="chat-status">Online</span>
+                </div>
+            </div>
+
+            <div className="chat-messages">
                 {messages.length === 0 ? (
-                    <div className="empty-state">
-                        <h2>How can I help you?</h2>
+                    <div className="chat-empty">
+                        <div className="chat-empty-icon">
+                            <Send size={24} />
+                        </div>
+                        <h3>How can I help you?</h3>
                         <p>Ask me anything about your knowledge base.</p>
                     </div>
                 ) : (
                     messages.map((msg, idx) => {
                         const dir = detectDirection(msg.content);
                         return (
-                            <div key={msg.id} className={`message message-${msg.role}`}>
-                                {/* Escalation Banner (D2) */}
+                            <div key={msg.id} className={`message-group ${msg.role === 'assistant' ? 'bot' : 'user'}`}>
+                                {/* Escalation Banner */}
                                 {msg.role === 'assistant' && msg.escalated && (
                                     <div className="escalation-banner">
                                         <AlertTriangle size={16} />
@@ -186,8 +197,13 @@ export const ChatInterface: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Message Bubble (D3: RTL/LTR) */}
-                                <div className="message-content" dir={dir}>
+                                <div className={`message-row ${msg.role === 'assistant' ? 'bot' : 'user'}`}>
+                                {msg.role === 'assistant' && (
+                                    <div className="message-avatar bot">Z</div>
+                                )}
+
+                                {/* Message Bubble */}
+                                <div className="message-bubble" dir={dir}>
                                     {msg.content ? (
                                         msg.role === 'assistant' ? (
                                             <ReactMarkdown
@@ -219,16 +235,21 @@ export const ChatInterface: React.FC = () => {
                                     ) : (
                                         isLoading &&
                                         idx === messages.length - 1 && (
-                                            <div className="typing-indicator">
-                                                <span />
-                                                <span />
-                                                <span />
+                                            <div className="typing-dots">
+                                                <div className="typing-dot" />
+                                                <div className="typing-dot" />
+                                                <div className="typing-dot" />
                                             </div>
                                         )
                                     )}
                                 </div>
 
-                                {/* Feedback buttons (B4) */}
+                                {msg.role === 'user' && (
+                                    <div className="message-avatar user-av">U</div>
+                                )}
+                                </div>{/* end message-row */}
+
+                                {/* Feedback buttons */}
                                 {msg.role === 'assistant' && msg.content && (
                                     <div className="message-actions">
                                         <button
@@ -346,7 +367,7 @@ export const ChatInterface: React.FC = () => {
                 <div ref={messagesEndRef} />
             </div>
 
-            <div className="input-container">
+            <div className="chat-input-bar">
                 <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -354,12 +375,13 @@ export const ChatInterface: React.FC = () => {
                     placeholder="Type your message..."
                     disabled={isLoading}
                     rows={1}
+                    className="chat-input"
                     dir={detectDirection(input)}
                 />
                 <button
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading}
-                    className="send-btn"
+                    className="chat-send-btn"
                 >
                     {isLoading ? (
                         <Loader2 size={18} className="spinner" />

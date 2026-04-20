@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384
     
     # Document Processing
-    CHUNK_SIZE: int = 1000
-    CHUNK_OVERLAP: int = 200
+    CHUNK_SIZE: int = 150   # words per chunk (was 1000 — too large for 512-token cross-encoder)
+    CHUNK_OVERLAP: int = 25
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".txt", ".csv"}
     
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
     
     # CORS
-    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "http://localhost", "http://localhost:80"]
 
     # Email (Resend.com)
     RESEND_API_KEY: Optional[str] = None

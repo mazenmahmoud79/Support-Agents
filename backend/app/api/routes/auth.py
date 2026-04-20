@@ -95,9 +95,17 @@ async def register(
     db.add(user)
     db.commit()
 
-    await send_verification_email(user.email, token)
+    email_sent = False
+    try:
+        await send_verification_email(user.email, token)
+        email_sent = True
+    except Exception as exc:
+        logger.warning(
+            f"Could not send verification email to {user.email}: {exc}. "
+            f"Verification URL: {settings.FRONTEND_URL}/verify-email?token={token}"
+        )
 
-    logger.info(f"New registration: {user.email} (org: {body.org_name})")
+    logger.info(f"New registration: {user.email} (org: {body.org_name}, email_sent={email_sent})")
     return {"message": "Account created. Please check your email to verify your address."}
 
 
@@ -124,7 +132,10 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
     user.verification_token_expires_at = None
     db.commit()
 
-    await send_welcome_email(user.email, user.tenant.name)
+    try:
+        await send_welcome_email(user.email, user.tenant.name)
+    except Exception as exc:
+        logger.warning(f"Could not send welcome email to {user.email}: {exc}")
 
     logger.info(f"Email verified: {user.email}")
     return TokenResponse(access_token=_make_jwt(user))
@@ -258,7 +269,13 @@ async def resend_verification(
         user.verification_token = token
         user.verification_token_expires_at = expires
         db.commit()
-        await send_verification_email(user.email, token)
+        try:
+            await send_verification_email(user.email, token)
+        except Exception as exc:
+            logger.warning(
+                f"Could not resend verification email to {user.email}: {exc}. "
+                f"Verification URL: {settings.FRONTEND_URL}/verify-email?token={token}"
+            )
 
     return {"message": "If your email is registered and unverified, a new link has been sent."}
 
