@@ -3,7 +3,7 @@ SQLAlchemy database models for metadata storage.
 Vector embeddings are stored in Qdrant, metadata is stored here.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Text, BigInteger, Enum as SQLEnum, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Text, BigInteger, Enum as SQLEnum, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 from .enums import (
     FileType, MessageRole, DocumentStatus, Industry, ToneOfVoice, LanguageStyle, ResponseLength,
@@ -33,6 +33,7 @@ class Tenant(Base):
     whatsapp_phone_number_id = Column(String(100), unique=True, nullable=True, index=True)
     
     # Relationships
+    user = relationship("User", back_populates="tenant", uselist=False)
     documents = relationship("Document", back_populates="tenant", cascade="all, delete-orphan")
     chat_history = relationship("ChatHistory", back_populates="tenant", cascade="all, delete-orphan")
     analytics = relationship("Analytics", back_populates="tenant", cascade="all, delete-orphan")
@@ -104,6 +105,26 @@ class Analytics(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="analytics")
     
+
+class User(Base):
+    """User account model — one user owns one organization (tenant)."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=True)   # null for Google-only accounts
+    google_id = Column(String(255), unique=True, nullable=True, index=True)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(255), nullable=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("Tenant", back_populates="user")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email={self.email}, tenant={self.tenant_id})>"
+
 
 class DemoUser(Base):
     """Demo user access model for simplified demo authentication."""

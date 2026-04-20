@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
+
+    # Email (Resend.com)
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM_EMAIL: str = "noreply@yourdomain.com"
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: Optional[str] = None
+
+    # Frontend URL (for email verification links)
+    FRONTEND_URL: str = "http://localhost:5173"
     
     model_config = SettingsConfigDict(
         env_file="../.env",  # Look in parent directory for local dev

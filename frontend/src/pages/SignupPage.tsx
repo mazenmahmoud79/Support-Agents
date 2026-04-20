@@ -4,29 +4,36 @@ import { GoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '../hooks/useAuth';
 import './LoginPage.css';
 
-export const LoginPage: React.FC = () => {
+const SignupPage: React.FC = () => {
+    const [orgName, setOrgName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    const { emailLogin, googleLogin } = useAuthStore();
+    const { register, googleLogin } = useAuthStore();
     const navigate = useNavigate();
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+
+        if (password !== confirmPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters');
+            return;
+        }
+
         setIsLoading(true);
         try {
-            await emailLogin(email, password);
-            navigate('/');
+            await register(email, password, orgName);
+            navigate('/verify-email', { state: { email } });
         } catch (err: any) {
-            const detail = err.response?.data?.detail;
-            if (err.response?.status === 403) {
-                navigate('/verify-email', { state: { email } });
-            } else {
-                setError(detail || 'Invalid email or password');
-            }
+            setError(err.response?.data?.detail || 'Registration failed. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -39,7 +46,7 @@ export const LoginPage: React.FC = () => {
             await googleLogin(credentialResponse.credential);
             navigate('/');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Google login failed');
+            setError(err.response?.data?.detail || 'Google signup failed');
         } finally {
             setIsLoading(false);
         }
@@ -50,11 +57,25 @@ export const LoginPage: React.FC = () => {
             <div className="login-card">
                 <h1>Zada.AI</h1>
                 <p className="subtitle">Customer Service Provider</p>
-                <p className="slogan">Sign in to your account</p>
+                <p className="slogan">Create your free account</p>
 
                 {error && <div className="error-message">{error}</div>}
 
-                <form onSubmit={handleLogin} className="login-form">
+                <form onSubmit={handleSignup} className="login-form">
+                    <div className="form-group">
+                        <label htmlFor="orgName">Organization Name</label>
+                        <input
+                            id="orgName"
+                            type="text"
+                            value={orgName}
+                            onChange={(e) => setOrgName(e.target.value)}
+                            placeholder="Acme Corp"
+                            required
+                            disabled={isLoading}
+                            maxLength={255}
+                        />
+                    </div>
+
                     <div className="form-group">
                         <label htmlFor="email">Email</label>
                         <input
@@ -75,7 +96,21 @@ export const LoginPage: React.FC = () => {
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
+                            placeholder="Min. 8 characters"
+                            required
+                            disabled={isLoading}
+                            minLength={8}
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label htmlFor="confirmPassword">Confirm Password</label>
+                        <input
+                            id="confirmPassword"
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Repeat your password"
                             required
                             disabled={isLoading}
                         />
@@ -84,9 +119,9 @@ export const LoginPage: React.FC = () => {
                     <button
                         type="submit"
                         className="btn btn-primary submit-btn"
-                        disabled={isLoading || !email || !password}
+                        disabled={isLoading || !orgName || !email || !password || !confirmPassword}
                     >
-                        {isLoading ? <><div className="spinner" />Signing in...</> : 'Sign In'}
+                        {isLoading ? <><div className="spinner" />Creating account...</> : 'Create Account'}
                     </button>
                 </form>
 
@@ -95,16 +130,18 @@ export const LoginPage: React.FC = () => {
                 <div className="google-btn-wrapper">
                     <GoogleLogin
                         onSuccess={handleGoogleSuccess}
-                        onError={() => setError('Google login failed')}
+                        onError={() => setError('Google signup failed')}
                         width="100%"
-                        text="signin_with"
+                        text="signup_with"
                     />
                 </div>
 
                 <p className="auth-footer-link">
-                    Don't have an account? <Link to="/signup">Create one</Link>
+                    Already have an account? <Link to="/login">Sign in</Link>
                 </p>
             </div>
         </div>
     );
 };
+
+export default SignupPage;

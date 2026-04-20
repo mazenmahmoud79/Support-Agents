@@ -4,7 +4,7 @@ import { tenantContextService, TokenInfo } from '../../services/tenantContextSer
 import { Key, RefreshCw, Copy, Check, Eye, EyeOff } from 'lucide-react';
 
 const IntegrationGuide: React.FC = () => {
-    const { tenant, setApiKey } = useAuthStore();
+    const { tenant } = useAuthStore();
     const [copied, setCopied] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState('javascript');
 
@@ -40,7 +40,6 @@ const IntegrationGuide: React.FC = () => {
             const result = await tenantContextService.regenerateToken();
             setNewToken(result.api_key);
             setShowToken(true);
-            setApiKey(result.api_key); // Update global store immediately
         } catch (error) {
             console.error('Failed to regenerate token:', error);
         } finally {

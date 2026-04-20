@@ -10,7 +10,7 @@ interface ChatMessage {
 }
 
 const HostedBotPreview: React.FC = () => {
-    const { tenant, apiKey } = useAuthStore();
+    const { tenant } = useAuthStore();
     const [context, setContext] = useState<TenantContext | null>(null);
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(false);
@@ -56,8 +56,8 @@ const HostedBotPreview: React.FC = () => {
         setIsLoading(true);
 
         try {
-            // Use store apiKey for immediate updates
-            const tokenToUse = apiKey || tenant?.api_key;
+            // Use tenant api_key for the public chat preview
+            const tokenToUse = tenant?.api_key;
             if (!tokenToUse) throw new Error('No API token');
 
             const response = await fetch(publicApiUrl, {

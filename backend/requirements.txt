@@ -42,6 +42,9 @@ rank-bm25>=0.2.2
 # WhatsApp integration
 httpx>=0.26.0
 
+# Email
+resend>=2.0.0
+
 # Caching (optional)
 redis>=5.0.1
 

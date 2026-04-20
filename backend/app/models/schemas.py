@@ -90,7 +90,51 @@ class TenantLogin(BaseModel):
     api_key: str = Field(..., description="Tenant API key")
 
 
-class DemoLogin(BaseModel):
+# ==================== Auth Schemas ====================
+
+class RegisterRequest(BaseModel):
+    """Schema for user registration."""
+    email: str = Field(..., min_length=5, max_length=255, description="User email")
+    password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars)")
+    org_name: str = Field(..., min_length=1, max_length=255, description="Organization/company name")
+
+
+class LoginRequest(BaseModel):
+    """Schema for email/password login."""
+    email: str = Field(..., description="User email")
+    password: str = Field(..., description="User password")
+
+
+class GoogleAuthRequest(BaseModel):
+    """Schema for Google OAuth — receives the ID token from the frontend."""
+    credential: str = Field(..., description="Google ID token (JWT from @react-oauth/google)")
+
+
+class ResendVerificationRequest(BaseModel):
+    """Schema for resending the verification email."""
+    email: str = Field(..., description="User email")
+
+
+class TokenResponse(BaseModel):
+    """Schema for JWT token response."""
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    """Schema for user profile response."""
+    id: int
+    email: str
+    is_verified: bool
+    tenant_id: str
+    created_at: datetime
+    tenant: "TenantResponse"
+
+    class Config:
+        from_attributes = True
+
+
+
     """Schema for demo user login."""
     demo_id: str = Field(..., min_length=6, max_length=50, description="Demo access ID")
 

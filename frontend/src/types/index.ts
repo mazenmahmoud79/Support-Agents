@@ -57,10 +57,19 @@ export interface Tenant {
     id: number;
     tenant_id: string;
     name: string;
-    slug?: string;  // URL-safe identifier for public API
+    slug?: string;
     api_key: string;
     created_at: string;
     is_active: boolean;
+}
+
+export interface User {
+    id: number;
+    email: string;
+    is_verified: boolean;
+    tenant_id: string;
+    created_at: string;
+    tenant: Tenant;
 }
 
 export interface Document {

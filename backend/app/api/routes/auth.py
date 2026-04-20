@@ -1,82 +1,290 @@
 """
-Authentication routes for tenant registration and login.
+Authentication routes — register, login (email+password), Google OAuth, email verification.
 """
+import secrets
+from datetime import datetime, timedelta
+from typing import Optional
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.models.database import Tenant, Analytics, DemoUser
-from app.models.schemas import TenantResponse, DemoLogin
-from app.services.vector_store import get_vector_store
+
+from app.config import settings
 from app.core.logging import get_logger
 from app.core.rate_limit import limiter, AUTH_LIMIT
-from datetime import datetime
+from app.core.security import (
+    create_access_token,
+    generate_api_key,
+    generate_tenant_id,
+    hash_password,
+    verify_password,
+    verify_token,
+)
+from app.db.session import get_db
+from app.models.database import Tenant, User
+from app.models.schemas import (
+    GoogleAuthRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResendVerificationRequest,
+    TokenResponse,
+    UserResponse,
+)
+from app.services.email_service import send_verification_email, send_welcome_email
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+_VERIFICATION_TOKEN_EXPIRE_HOURS = 24
 
-@router.post("/login", response_model=TenantResponse)
+
+def _make_jwt(user: User) -> str:
+    return create_access_token({
+        "sub": str(user.id),
+        "tenant_id": user.tenant_id,
+        "email": user.email,
+    })
+
+
+def _new_verification_token() -> tuple[str, datetime]:
+    token = secrets.token_urlsafe(32)
+    expires = datetime.utcnow() + timedelta(hours=_VERIFICATION_TOKEN_EXPIRE_HOURS)
+    return token, expires
+
+
+# ---------------------------------------------------------------------------
+# Register
+# ---------------------------------------------------------------------------
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit(AUTH_LIMIT)
-async def demo_login(
+async def register(
     request: Request,
-    login_data: DemoLogin,
-    db: Session = Depends(get_db)
+    body: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a new organization account. Sends a verification email."""
+    if db.query(User).filter(User.email == body.email.lower()).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Create Tenant
+    tenant_id = generate_tenant_id(body.org_name)
+    while db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first():
+        tenant_id = generate_tenant_id(body.org_name)
+
+    tenant = Tenant(
+        tenant_id=tenant_id,
+        name=body.org_name,
+        api_key=generate_api_key(),
+        is_active=1,
+    )
+    db.add(tenant)
+    db.flush()  # get tenant_id without full commit
+
+    # Create User
+    token, expires = _new_verification_token()
+    user = User(
+        email=body.email.lower(),
+        hashed_password=hash_password(body.password),
+        is_verified=False,
+        verification_token=token,
+        verification_token_expires_at=expires,
+        tenant_id=tenant_id,
+    )
+    db.add(user)
+    db.commit()
+
+    await send_verification_email(user.email, token)
+
+    logger.info(f"New registration: {user.email} (org: {body.org_name})")
+    return {"message": "Account created. Please check your email to verify your address."}
+
+
+# ---------------------------------------------------------------------------
+# Verify Email
+# ---------------------------------------------------------------------------
+
+@router.get("/verify-email")
+async def verify_email(token: str, db: Session = Depends(get_db)):
+    """Verify email address using the one-time token from the verification link."""
+    user = db.query(User).filter(User.verification_token == token).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+
+    if user.verification_token_expires_at and user.verification_token_expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=400,
+            detail="Verification link expired. Please request a new one.",
+        )
+
+    user.is_verified = True
+    user.verification_token = None
+    user.verification_token_expires_at = None
+    db.commit()
+
+    await send_welcome_email(user.email, user.tenant.name)
+
+    logger.info(f"Email verified: {user.email}")
+    return TokenResponse(access_token=_make_jwt(user))
+
+
+# ---------------------------------------------------------------------------
+# Login (email + password)
+# ---------------------------------------------------------------------------
+
+@router.post("/login", response_model=TokenResponse)
+@limiter.limit(AUTH_LIMIT)
+async def login(
+    request: Request,
+    body: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    """Login with email and password. Returns a JWT."""
+    user = db.query(User).filter(User.email == body.email.lower()).first()
+
+    # Constant-time rejection — don't reveal whether email exists
+    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Please check your inbox.",
+        )
+
+    logger.info(f"Login: {user.email}")
+    return TokenResponse(access_token=_make_jwt(user))
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth
+# ---------------------------------------------------------------------------
+
+@router.post("/google", response_model=TokenResponse)
+@limiter.limit(AUTH_LIMIT)
+async def google_auth(
+    request: Request,
+    body: GoogleAuthRequest,
+    db: Session = Depends(get_db),
 ):
     """
-    Login using a demo access ID from pre-configured list.
-    
-    Validates against demo_ids.json file.
+    Authenticate via Google. Receives a Google ID token from the frontend
+    (@react-oauth/google), verifies it with Google, then creates or logs in the user.
     """
-    # Query DemoUser directly
-    demo_user = db.query(DemoUser).filter(
-        DemoUser.demo_id == login_data.demo_id,
-        DemoUser.is_active == 1
-    ).first()
-    
-    if not demo_user:
-        logger.warning(f"Demo login failed: invalid demo ID {login_data.demo_id}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid demo ID"
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Google login is not configured")
+
+    # Verify the Google ID token
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": body.credential},
+            timeout=10,
         )
-    
-    # Check expiration
-    if demo_user.expires_at and demo_user.expires_at < datetime.utcnow():
-        logger.warning(f"Demo key expired: {login_data.demo_id}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Demo key expired"
-        )
-        
-    # Get associated tenant
-    tenant = db.query(Tenant).filter(Tenant.tenant_id == demo_user.tenant_id).first()
-    
-    if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
-        )
-        
-    if not tenant.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant is inactive"
-        )
-        
-    # Update usage stats
-    demo_user.usage_count += 1
-    demo_user.last_used_at = datetime.utcnow()
-    db.commit()
-    
-    logger.info(f"Login successful: {login_data.demo_id} (Tenant: {tenant.name})")
-    
-    return TenantResponse(
-        id=tenant.id,
-        tenant_id=tenant.tenant_id,
-        name=tenant.name,
-        api_key=tenant.api_key,
-        created_at=tenant.created_at,
-        is_active=bool(tenant.is_active)
-    )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google credential")
+
+    info = resp.json()
+
+    if info.get("aud") != settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="Google token audience mismatch")
+
+    if info.get("email_verified") != "true":
+        raise HTTPException(status_code=400, detail="Google account email is not verified")
+
+    google_id = info["sub"]
+    email = info["email"].lower()
+    name = info.get("name", email.split("@")[0])
+
+    # Try to find existing user by google_id or email
+    user = db.query(User).filter(User.google_id == google_id).first()
+
+    if not user:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            # Link Google to existing email account
+            user.google_id = google_id
+            user.is_verified = True
+            db.commit()
+        else:
+            # New user — create Tenant + User
+            tenant_id = generate_tenant_id(name)
+            while db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first():
+                tenant_id = generate_tenant_id(name)
+
+            tenant = Tenant(
+                tenant_id=tenant_id,
+                name=name,
+                api_key=generate_api_key(),
+                is_active=1,
+            )
+            db.add(tenant)
+            db.flush()
+
+            user = User(
+                email=email,
+                google_id=google_id,
+                is_verified=True,   # Google accounts are pre-verified
+                tenant_id=tenant_id,
+            )
+            db.add(user)
+            db.commit()
+            logger.info(f"New Google signup: {email}")
+
+    logger.info(f"Google login: {email}")
+    return TokenResponse(access_token=_make_jwt(user))
+
+
+# ---------------------------------------------------------------------------
+# Resend Verification
+# ---------------------------------------------------------------------------
+
+@router.post("/resend-verification")
+@limiter.limit(AUTH_LIMIT)
+async def resend_verification(
+    request: Request,
+    body: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    """Resend the email verification link."""
+    user = db.query(User).filter(User.email == body.email.lower()).first()
+
+    # Don't reveal whether the email exists
+    if user and not user.is_verified:
+        token, expires = _new_verification_token()
+        user.verification_token = token
+        user.verification_token_expires_at = expires
+        db.commit()
+        await send_verification_email(user.email, token)
+
+    return {"message": "If your email is registered and unverified, a new link has been sent."}
+
+
+# ---------------------------------------------------------------------------
+# Me
+# ---------------------------------------------------------------------------
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    token: Optional[str] = None,
+    db: Session = Depends(get_db),
+    request: Request = None,
+):
+    """Return the current authenticated user + tenant. Reads JWT from Authorization header."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = verify_token(auth_header[7:])
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
 

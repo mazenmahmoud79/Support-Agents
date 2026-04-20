@@ -32,7 +32,6 @@ export const chatService = {
         onComplete: (sources: any[], responseTime: number, escalated?: boolean, confidenceScore?: number) => void,
         onError: (error: Error) => void
     ): Promise<void> => {
-        const apiKey = localStorage.getItem('apiKey');
         const apiUrl = apiClient.defaults.baseURL;
 
         try {
@@ -40,7 +39,7 @@ export const chatService = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': apiKey || '',
+                    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
                 },
                 body: JSON.stringify({
                     message: request.message,

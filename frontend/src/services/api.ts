@@ -14,28 +14,24 @@ const apiClient: AxiosInstance = axios.create({
     },
 });
 
-// Request interceptor to add API key
+// Request interceptor — add Authorization Bearer token
 apiClient.interceptors.request.use(
     (config) => {
-        const apiKey = localStorage.getItem('apiKey');
-        if (apiKey) {
-            config.headers['X-API-Key'] = apiKey;
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
         }
         return config;
     },
-    (error) => {
-        return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
 );
 
-// Response interceptor for error handling
+// Response interceptor — 401 → logout and redirect
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Unauthorized - clear auth and redirect
-            localStorage.removeItem('apiKey');
-            localStorage.removeItem('tenant');
+            localStorage.removeItem('token');
             window.location.href = '/login';
         }
         return Promise.reject(error);
