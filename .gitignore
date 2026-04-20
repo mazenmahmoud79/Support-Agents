@@ -49,3 +49,5 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+Docs/
+data-to-upload/
