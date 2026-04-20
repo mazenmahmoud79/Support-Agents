@@ -11,8 +11,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
+# Install torch CPU-only first (smaller download, avoids timeout)
+RUN pip install --no-cache-dir --user --timeout 300 \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user --timeout 300 -r requirements.txt
 
 # Final stage
 FROM python:3.11-slim
@@ -25,17 +29,23 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
+# Copy Python packages from builder — put in appuser-accessible location
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Make sure scripts in .local are usable
+ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONPATH=/home/appuser/.local/lib/python3.11/site-packages
+
+# Pre-download the sentence-transformers model during build
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Copy application code
 COPY ./app ./app
 
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
-
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create non-root user and transfer model cache
+RUN useradd -m -u 1000 appuser \
+    && cp -r /root/.cache /home/appuser/.cache \
+    && chown -R appuser:appuser /app /home/appuser/.local /home/appuser/.cache
 USER appuser
 
 # Expose port

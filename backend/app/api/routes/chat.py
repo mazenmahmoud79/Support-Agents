@@ -26,8 +26,8 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 @router.post("", response_model=ChatResponse)
 @limiter.limit(CHAT_LIMIT)
 async def chat(
-    request: ChatRequest,
-    http_request: Request,
+    chat_req: ChatRequest,
+    request: Request,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -36,7 +36,7 @@ async def chat(
     
     Uses RAG to retrieve relevant context from the knowledge base.
     """
-    logger.info(f"Chat request from tenant {tenant.tenant_id}: {request.message[:50]}")
+    logger.info(f"Chat request from tenant {tenant.tenant_id}: {chat_req.message[:50]}")
     
     start_time = datetime.utcnow()
     
@@ -44,7 +44,7 @@ async def chat(
     history_records = db.query(ChatHistory).filter(
         and_(
             ChatHistory.tenant_id == tenant.tenant_id,
-            ChatHistory.session_id == request.session_id
+            ChatHistory.session_id == chat_req.session_id
         )
     ).order_by(ChatHistory.timestamp.desc()).limit(10).all()
     
@@ -88,21 +88,21 @@ async def chat(
     try:
         # Execute RAG pipeline with tenant context
         response_text, sources, response_time, escalated, top_score, query_type = await rag_service.query(
-            user_message=request.message,
+            user_message=chat_req.message,
             tenant_id=tenant.tenant_id,
             company_name=tenant.name,
-            session_id=request.session_id,
+            session_id=chat_req.session_id,
             chat_history=chat_history,
-            include_sources=request.include_sources,
+            include_sources=chat_req.include_sources,
             tenant_context=tenant_context
         )
         
         # Save user message to history
         user_message = ChatHistory(
             tenant_id=tenant.tenant_id,
-            session_id=request.session_id,
+            session_id=chat_req.session_id,
             role=MessageRole.USER,
-            content=request.message,
+            content=chat_req.message,
             timestamp=start_time
         )
         db.add(user_message)
@@ -110,7 +110,7 @@ async def chat(
         # Save assistant response to history
         assistant_message = ChatHistory(
             tenant_id=tenant.tenant_id,
-            session_id=request.session_id,
+            session_id=chat_req.session_id,
             role=MessageRole.ASSISTANT,
             content=response_text,
             sources=json.dumps(sources) if sources else None,
@@ -122,8 +122,8 @@ async def chat(
         if escalated:
             escalation = EscalationLog(
                 tenant_id=tenant.tenant_id,
-                session_id=request.session_id,
-                query=request.message,
+                session_id=chat_req.session_id,
+                query=chat_req.message,
                 query_type=query_type,
                 top_score=top_score,
                 reason="low_confidence",
@@ -155,7 +155,7 @@ async def chat(
         
         # Format sources for response
         source_documents = None
-        if request.include_sources and sources:
+        if chat_req.include_sources and sources:
             source_documents = [
                 SourceDocument(**source)
                 for source in sources
@@ -165,7 +165,7 @@ async def chat(
         
         return ChatResponse(
             response=response_text,
-            session_id=request.session_id,
+            session_id=chat_req.session_id,
             sources=source_documents,
             response_time=response_time,
             timestamp=datetime.utcnow(),
@@ -198,8 +198,8 @@ async def chat(
 @router.post("/stream")
 @limiter.limit(CHAT_LIMIT)
 async def chat_stream(
-    request: ChatRequest,
-    http_request: Request,
+    chat_req: ChatRequest,
+    request: Request,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -214,7 +214,7 @@ async def chat_stream(
     history_records = db.query(ChatHistory).filter(
         and_(
             ChatHistory.tenant_id == tenant.tenant_id,
-            ChatHistory.session_id == request.session_id
+            ChatHistory.session_id == chat_req.session_id
         )
     ).order_by(ChatHistory.timestamp.desc()).limit(10).all()
     
@@ -263,10 +263,10 @@ async def chat_stream(
         try:
             # Stream RAG response with tenant context
             async for chunk, chunk_sources, is_final, escalated, top_score, query_type in rag_service.query_stream(
-                user_message=request.message,
+                user_message=chat_req.message,
                 tenant_id=tenant.tenant_id,
                 company_name=tenant.name,
-                session_id=request.session_id,
+                session_id=chat_req.session_id,
                 chat_history=chat_history,
                 tenant_context=tenant_context
             ):
@@ -285,9 +285,9 @@ async def chat_stream(
             # Save conversation to database
             user_message = ChatHistory(
                 tenant_id=tenant.tenant_id,
-                session_id=request.session_id,
+                session_id=chat_req.session_id,
                 role=MessageRole.USER,
-                content=request.message,
+                content=chat_req.message,
                 timestamp=start_time
             )
             db.add(user_message)
@@ -295,7 +295,7 @@ async def chat_stream(
             complete_response = "".join(full_response)
             assistant_message = ChatHistory(
                 tenant_id=tenant.tenant_id,
-                session_id=request.session_id,
+                session_id=chat_req.session_id,
                 role=MessageRole.ASSISTANT,
                 content=complete_response,
                 sources=json.dumps(sources) if sources else None,
@@ -334,8 +334,8 @@ async def chat_stream(
             if escalated:
                 escalation = EscalationLog(
                     tenant_id=tenant.tenant_id,
-                    session_id=request.session_id,
-                    query=request.message,
+                    session_id=chat_req.session_id,
+                    query=chat_req.message,
                     query_type=query_type,
                     top_score=top_score,
                     reason="low_confidence",
@@ -347,7 +347,7 @@ async def chat_stream(
             final_data = {
                 "content": "",
                 "is_final": True,
-                "sources": sources if request.include_sources else None,
+                "sources": sources if chat_req.include_sources else None,
                 "response_time": response_time,
                 "escalated": escalated,
                 "confidence_score": top_score,

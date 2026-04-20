@@ -93,8 +93,8 @@ def get_tenant_context_dict(tenant_context_record) -> Optional[dict]:
 @limiter.limit(PUBLIC_CHAT_LIMIT)
 async def public_chat(
     tenant_slug: str,
-    request: PublicChatRequest,
-    http_request: Request,
+    chat_req: PublicChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     x_api_token: Optional[str] = Header(None, alias="X-API-Token")
 ):
@@ -115,7 +115,7 @@ async def public_chat(
     validate_api_token(tenant, x_api_token)
     
     # Generate session ID if not provided
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = chat_req.session_id or str(uuid.uuid4())
     
     # Load tenant context for customization
     tenant_context_record = db.query(TenantContext).filter(
@@ -129,7 +129,7 @@ async def public_chat(
     
     try:
         response, sources, response_time, escalated, top_score, query_type = await rag_service.query(
-            user_message=request.message,
+            user_message=chat_req.message,
             tenant_id=tenant.tenant_id,
             company_name=tenant.name,
             session_id=session_id,
@@ -154,8 +154,8 @@ async def public_chat(
 @limiter.limit(PUBLIC_CHAT_LIMIT)
 async def public_chat_stream(
     tenant_slug: str,
-    request: PublicChatRequest,
-    http_request: Request,
+    chat_req: PublicChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     x_api_token: Optional[str] = Header(None, alias="X-API-Token")
 ):
@@ -176,7 +176,7 @@ async def public_chat_stream(
     validate_api_token(tenant, x_api_token)
     
     # Generate session ID if not provided
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = chat_req.session_id or str(uuid.uuid4())
     
     # Load tenant context for customization
     tenant_context_record = db.query(TenantContext).filter(
@@ -196,7 +196,7 @@ async def public_chat_stream(
             
             # Stream the response with tenant context
             async for chunk, sources, is_final, escalated, top_score, query_type in rag_service.query_stream(
-                user_message=request.message,
+                user_message=chat_req.message,
                 tenant_id=tenant.tenant_id,
                 company_name=tenant.name,
                 session_id=session_id,
